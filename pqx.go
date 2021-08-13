@@ -6,6 +6,16 @@
 //  	db := pqx.Start(t)
 //  	...
 //  }
+//
+// Flags
+//
+// Flags are passed using the "go test" command like "go test -pqx.d=1".
+//
+//  -pqx.d level
+//  	Log all postgres log output to t.Log. This means each test's postgres
+//  	logs are logged to their respective testing.T/B. The value level is
+//  	passed to postgres. See `postgres --help` for more information on the
+//  	-D flag values. The default is to log nothing.
 package pqx
 
 import (
@@ -45,11 +55,15 @@ func Start(t testing.TB) *sql.DB {
 // StartExtra starts a fresh Postgres service with a fresh data directory and
 // returns the connection string for connecting to the service, and a
 // ready-to-use *sql.DB connected to the service using the connection string.
-// Both the service and data directory are cleaned up upon exiting the test. If
-// the pqx.d flag is provided with a value greater than zero, then all logs
-// produced by the Postgres service are logged using t.Log. If a query error
-// occurs, the query is logged using t.Error with a 💥 placed where the error
-// occurred in the query. Any non-query errors are logged using t.Fatal.
+// Both the service and data directory are cleaned up upon exiting the test.
+//
+// If the pqx.d flag is provided with a value greater than zero, then all logs
+// produced by the Postgres service are logged using t.Log.
+//
+// If a query error occurs, the query is logged using t.Error with a 💥 placed
+// where the error occurred in the query.
+//
+// Any non-query errors are logged using t.Fatal.
 func StartExtra(t testing.TB) (cs string, db *sql.DB) {
 	t.Helper()
 
