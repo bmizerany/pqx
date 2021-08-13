@@ -52,6 +52,22 @@ func Start(t testing.TB) *sql.DB {
 	return db
 }
 
+// StartWith calls Start and executes migrate using db.Exec before return a
+// sql.DB.
+func StartWith(t testing.TB, schema string) *sql.DB {
+	t.Helper()
+	db := Start(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err := db.ExecContext(ctx, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
 // StartExtra starts a fresh Postgres service with a fresh data directory and
 // returns the connection string for connecting to the service, and a
 // ready-to-use *sql.DB connected to the service using the connection string.
