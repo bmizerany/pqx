@@ -1,3 +1,11 @@
+// Package pqx provides support for automated testing of packages that use
+// Postgres.
+//
+// To write a test using pqx, use the Start or StartExtra functions in the form:
+//  func Test(t *testing.T) {
+//  	db := pqx.Start(t)
+//  	...
+//  }
 package pqx
 
 import (
@@ -23,52 +31,41 @@ import (
 
 // Flags
 var (
-	flagV = flag.Int("pqx.d", 0, "postgres debug level (0-5)")
+	flagD = flag.Int("pqx.d", 0, "postgres debug level (0-5)")
 )
 
 var flagParseOnce sync.Once
 
-var startSchema string
-
-// SetSchema sets the schema used by all calls to Start. It is not safe to call
-// across goroutines.
-func SetSchema(s string) {
-	startSchema = s
-}
-
-// Start returns a sql.DB initialized with the schema set in SetSchema.
-func Start(t *testing.T) *sql.DB {
-	return StartWithSchema(t, startSchema)
-}
-
-func StartWithSchema(t testing.TB, schema string) *sql.DB {
+func Start(t testing.TB) *sql.DB {
 	t.Helper()
-	_, db := StartWithSchemaInfo(t, schema)
+	_, db := StartExtra(t)
 	return db
 }
 
-func StartWithSchemaInfo(t testing.TB, schema string) (cs string, db *sql.DB) {
+// StartExtra starts a fresh Postgres service with a fresh data directory and
+// returns the connection string for connecting to the service, and a
+// ready-to-use *sql.DB connected to the service using the connection string.
+// Both the service and data directory are cleaned up upon exiting the test. If
+// the pqx.d flag is provided with a value greater than zero, then all logs
+// produced by the Postgres service are logged using t.Log. If a query error
+// occurs, the query is logged using t.Error with a 💥 placed where the error
+// occurred in the query. Any non-query errors are logged using t.Fatal.
+func StartExtra(t testing.TB) (cs string, db *sql.DB) {
 	t.Helper()
 
 	flagParseOnce.Do(flag.Parse)
 
-	// each call to TempDir returns a new dir, so save the first it gives
-	// us and pass around.
 	dataDir := t.TempDir()
 
 	initDB(t, dataDir)
 
-	port, err := freePort()
-	if err != nil {
-		t.Fatal("pqx:", err)
-	}
-
-	// iosolate logs from data by using new TempDir
 	f, err := os.CreateTemp(t.TempDir(), "csvlog")
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	f.Close() // close so that postgres may take over
+
+	port := freePort(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	pg := exec.CommandContext(
@@ -76,7 +73,7 @@ func StartWithSchemaInfo(t testing.TB, schema string) (cs string, db *sql.DB) {
 		"postgres",
 
 		// args
-		"-d", strconv.Itoa(*flagV),
+		"-d", strconv.Itoa(*flagD),
 		"-p", port,
 		"-D", dataDir,
 		"-c", "lc_messages=en_US.UTF-8",
@@ -88,8 +85,7 @@ func StartWithSchemaInfo(t testing.TB, schema string) (cs string, db *sql.DB) {
 		"-c", "log_filename="+filepath.Base(f.Name()),
 	)
 
-	if *flagV > 0 {
-		// TODO(bmizerany): fold into t.Log
+	if *flagD > 0 {
 		pg.Stdout = &logLineWriter{t: t}
 		pg.Stderr = &logLineWriter{t: t}
 	}
@@ -166,27 +162,22 @@ func StartWithSchemaInfo(t testing.TB, schema string) (cs string, db *sql.DB) {
 				t.Fatal("pqx: context canceled before postgres started:", ctx.Err())
 			}
 		}
-
-		_, err = db.Exec(schema)
-		if err != nil {
-			t.Fatalf("error building schema: %v", err)
-		}
 		return cs, db
 	}
 }
 
-func freePort() (port string, err error) {
+func freePort(t testing.TB) string {
 	// To be reviewed issue #341
 	// nolint:gosec
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	defer l.Close() // we close below, but be paranoid
 
 	addr := l.Addr().(*net.TCPAddr)
 	l.Close()
-	return strconv.Itoa(addr.Port), nil
+	return strconv.Itoa(addr.Port)
 }
 
 func initDB(t testing.TB, dataPath string) {
@@ -228,14 +219,12 @@ func (w *logLineWriter) maybeLogLine() (ok bool) {
 	return true
 }
 
-// caller must hold w.m
 func (w *logLineWriter) init() {
 	if w.buf == nil {
 		w.buf = new(bytes.Buffer)
 	}
 }
 
-// caller must hold w.m
 func (w *logLineWriter) Flush() {
 	w.init()
 	for {

@@ -48,7 +48,7 @@ func TestHighlightErrorPosition(t *testing.T) {
 		t.Log(tlc.Got())
 	})
 
-	db := StartWithSchema(tlc, ``)
+	db := Start(tlc)
 
 	for _, tt := range tests {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
