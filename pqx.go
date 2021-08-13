@@ -48,7 +48,7 @@ var flagParseOnce sync.Once
 
 func Start(t testing.TB) *sql.DB {
 	t.Helper()
-	_, db := StartExtra(t)
+	db, _ := StartExtra(t)
 	return db
 }
 
@@ -64,7 +64,7 @@ func Start(t testing.TB) *sql.DB {
 // where the error occurred in the query.
 //
 // Any non-query errors are logged using t.Fatal.
-func StartExtra(t testing.TB) (cs string, db *sql.DB) {
+func StartExtra(t testing.TB) (db *sql.DB, connStr string) {
 	t.Helper()
 
 	flagParseOnce.Do(flag.Parse)
@@ -156,8 +156,8 @@ func StartExtra(t testing.TB) (cs string, db *sql.DB) {
 		}
 	})
 
-	cs = fmt.Sprintf("port=%s dbname=postgres sslmode=disable", port)
-	db, err = sql.Open("postgres", cs)
+	connStr = fmt.Sprintf("port=%s dbname=postgres sslmode=disable", port)
+	db, err = sql.Open("postgres", connStr)
 	if err != nil {
 		t.Fatal("pqx:", err)
 	}
@@ -166,6 +166,15 @@ func StartExtra(t testing.TB) (cs string, db *sql.DB) {
 	ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
 	for {
 		if err := db.PingContext(ctx); err != nil {
+			// TODO(bmizerany): Logging each ping error is noisy in the
+			// common case because postgres needs some time to boot, but in
+			// rare circumstances it might be useful to log the errors if
+			// one is having trouble connecting/booting postgres. It might
+			// be helpful to add a flag like `pqx.dd` for verbose logging?
+			// Or maybe log the errors if the level set by pqx.d is
+			// >0 because that signals verbosity is desired in
+			// logs.
+
 			// if the context was canceled, the ctx.Done() case will hit and
 			// we'll fail; otherwise we ignore the error, sleep, and
 			// then try again.
@@ -176,7 +185,7 @@ func StartExtra(t testing.TB) (cs string, db *sql.DB) {
 				t.Fatal("pqx: context canceled before postgres started:", ctx.Err())
 			}
 		}
-		return cs, db
+		return db, connStr
 	}
 }
 

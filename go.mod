@@ -1,4 +1,4 @@
-module pqx
+module github.com/bmizerany/pqx
 
 go 1.16
 
