@@ -1,6 +1,8 @@
 // Package pqx provides support for automated testing of packages that use
 // Postgres.
 //
+// This package is a work in progress.
+//
 // To write a test using pqx, use the Start or StartExtra functions in the form:
 //  func Test(t *testing.T) {
 //  	db := pqx.Start(t)
@@ -43,12 +45,14 @@ var (
 	schema strings.Builder
 )
 
-// Append appends sql to global schema string returned by Schema.
+// Append appends sql to the global schema string returned by Schema. A
+// trailing newline and semicolon are added automatically.
 func Append(sql string) {
 	schema.WriteString(sql)
 	schema.WriteString("\n;\n")
 }
 
+// Schema returns the concatenation of all sql passed to all calls to Append.
 func Schema() string {
 	return schema.String()
 }
@@ -60,9 +64,11 @@ var (
 
 var flagParseOnce sync.Once
 
+// Start is equivalent to:
+//  db, _ := StartExtra(t, Schema())
 func Start(t testing.TB) *sql.DB {
 	t.Helper()
-	db, _ := StartExtra(t, schema.String())
+	db, _ := StartExtra(t, Schema())
 	return db
 }
 

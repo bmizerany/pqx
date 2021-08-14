@@ -39,7 +39,7 @@ func TestHighlightErrorPosition(t *testing.T) {
 	var want strings.Builder
 	// TODO(bmizerany): better comment
 	// we must hookup the check first because we have to allow the Cleanup
-	// registered in StartWithSchema to fire first so that it flushes the
+	// registered in StartExtra to fire first so that it flushes the
 	// error log so we can see it.
 	t.Cleanup(func() {
 		if diff := cmp.Diff(want.String(), tlc.Got()); diff != "" {
@@ -70,6 +70,7 @@ func TestHighlightErrorPosition(t *testing.T) {
 func TestAppend(t *testing.T) {
 	Append(`CREATE TABLE append_test (i int)`)
 	Append(`INSERT INTO append_test VALUES (123)`)
+	Append(`; SELECT 1;`) // begin and end with semicolon
 
 	db := Start(t) // picks up Schema()
 
