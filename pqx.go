@@ -39,6 +39,20 @@ import (
 	"time"
 )
 
+var (
+	schema strings.Builder
+)
+
+// Append appends sql to global schema string returned by Schema.
+func Append(sql string) {
+	schema.WriteString(sql)
+	schema.WriteString("\n;\n")
+}
+
+func Schema() string {
+	return schema.String()
+}
+
 // Flags
 var (
 	flagD = flag.Int("pqx.d", 0, "postgres debug level (0-5)")
@@ -48,23 +62,7 @@ var flagParseOnce sync.Once
 
 func Start(t testing.TB) *sql.DB {
 	t.Helper()
-	db, _ := StartExtra(t)
-	return db
-}
-
-// StartWith calls Start and executes migrate using db.Exec before return a
-// sql.DB.
-func StartWith(t testing.TB, schema string) *sql.DB {
-	t.Helper()
-	db := Start(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	_, err := db.ExecContext(ctx, schema)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db, _ := StartExtra(t, schema.String())
 	return db
 }
 
@@ -80,7 +78,7 @@ func StartWith(t testing.TB, schema string) *sql.DB {
 // where the error occurred in the query.
 //
 // Any non-query errors are logged using t.Fatal.
-func StartExtra(t testing.TB) (db *sql.DB, connStr string) {
+func StartExtra(t testing.TB, schema string) (db *sql.DB, connStr string) {
 	t.Helper()
 
 	flagParseOnce.Do(flag.Parse)
@@ -179,7 +177,7 @@ func StartExtra(t testing.TB) (db *sql.DB, connStr string) {
 	}
 
 	// attempt to connect within 3 seconds, otherwise fail
-	ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
 	for {
 		if err := db.PingContext(ctx); err != nil {
 			// TODO(bmizerany): Logging each ping error is noisy in the
@@ -201,6 +199,12 @@ func StartExtra(t testing.TB) (db *sql.DB, connStr string) {
 				t.Fatal("pqx: context canceled before postgres started:", ctx.Err())
 			}
 		}
+
+		_, err := db.ExecContext(ctx, schema)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		return db, connStr
 	}
 }

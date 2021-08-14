@@ -67,6 +67,27 @@ func TestHighlightErrorPosition(t *testing.T) {
 
 }
 
+func TestAppend(t *testing.T) {
+	Append(`CREATE TABLE append_test (i int)`)
+	Append(`INSERT INTO append_test VALUES (123)`)
+
+	db := Start(t) // picks up Schema()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	row := db.QueryRowContext(ctx, "SELECT i FROM append_test")
+
+	var got int
+	if err := row.Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+
+	if want := 123; got != want {
+		t.Errorf("got = %v; want %v", got, want)
+	}
+}
+
 type testLogCapture struct {
 	testing.TB
 
