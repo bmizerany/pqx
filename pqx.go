@@ -41,22 +41,6 @@ import (
 	"time"
 )
 
-var (
-	schema strings.Builder
-)
-
-// Append appends sql to the global schema string returned by Schema. A
-// trailing newline and semicolon are added automatically.
-func Append(sql string) {
-	schema.WriteString(sql)
-	schema.WriteString("\n;\n")
-}
-
-// Schema returns the concatenation of all sql passed to all calls to Append.
-func Schema() string {
-	return schema.String()
-}
-
 // Flags
 var (
 	flagD = flag.Int("pqx.d", 0, "postgres debug level (0-5)")
@@ -66,9 +50,9 @@ var flagParseOnce sync.Once
 
 // Start is equivalent to:
 //  db, _ := StartExtra(t, Schema())
-func Start(t testing.TB) *sql.DB {
+func Start(t testing.TB, initSQL string) *sql.DB {
 	t.Helper()
-	db, _ := StartExtra(t, Schema())
+	db, _ := StartExtra(t, initSQL)
 	return db
 }
 
@@ -84,7 +68,7 @@ func Start(t testing.TB) *sql.DB {
 // where the error occurred in the query.
 //
 // Any non-query errors are logged using t.Fatal.
-func StartExtra(t testing.TB, schema string) (db *sql.DB, connStr string) {
+func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 	t.Helper()
 
 	flagParseOnce.Do(flag.Parse)
@@ -206,7 +190,7 @@ func StartExtra(t testing.TB, schema string) (db *sql.DB, connStr string) {
 			}
 		}
 
-		_, err := db.ExecContext(ctx, schema)
+		_, err := db.ExecContext(ctx, initSQL)
 		if err != nil {
 			t.Fatal(err)
 		}
