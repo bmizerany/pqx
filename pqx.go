@@ -200,8 +200,6 @@ func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 }
 
 func freePort(t testing.TB) string {
-	// To be reviewed issue #341
-	// nolint:gosec
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
