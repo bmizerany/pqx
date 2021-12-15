@@ -89,7 +89,7 @@ func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 
 	// TODO(bmizerany): test with `go test -count N` where N > 1 to ensure
 	// we don't try to create a database that already exists.
-	dbname := strings.ToLower(t.Name())
+	dbname := toDBName(t.Name())
 
 	flagParseOnce.Do(flag.Parse)
 
@@ -422,4 +422,10 @@ func logQueryErrors(t testing.TB, fname, dbname string) {
 
 		t.Logf("\n%s", sb.String())
 	}
+}
+
+func toDBName(name string) string {
+	// TODO(bmizerany): probably a naive approach. Let's see how long it
+	// takes until someone has a bug about this to decide what to do next.
+	return strings.ToLower(strings.Replace(name, "/", "_", -1))
 }
