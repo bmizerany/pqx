@@ -5,7 +5,7 @@
 //
 // To write a test using pqx, use the Start or StartExtra functions in the form:
 //  func Test(t *testing.T) {
-//  	db := pqx.Start(t, "")
+//  	db := pqx.Start(t)
 //  	...
 //  }
 //
@@ -18,20 +18,6 @@
 //  	logs are logged to their respective testing.T/B. The value level is
 //  	passed to postgres. See `postgres --help` for more information on the
 //  	-D flag values. The default is to log nothing.
-//
-//  -pqx.c
-//  	If set, -pqx.c will cause each test using Start or StartExtra to block
-//  	just before cleaning up test data and print the psql command for
-//  	connecting to the running test database. The test will resume upon
-//  	receiving SIGINT (ctrl+c). This is useful for debugging tests.
-//
-//      NOTE: pqx uses t.Logf to print the psql command and `go test` will not
-//      stream this unless the -test.v flag is set. To see the psql command
-//      -pqx.c must be used with the -test.v flag.
-//
-//      Example:
-//
-//        go test -v -pqx.c -run=TestThatIsActingWeird
 package pqx
 
 import (
@@ -46,7 +32,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -59,7 +44,6 @@ import (
 // Flags
 var (
 	flagD = flag.Int("pqx.d", 0, "postgres debug level (0-5)")
-	flagC = flag.Bool("pqx.c", false, "print psql command and block until SIGNINT for each test (see godoc for more information)")
 )
 
 var flagParseOnce sync.Once
@@ -86,10 +70,6 @@ func Start(t testing.TB, initSQL string) *sql.DB {
 // Any non-query errors are logged using t.Fatal.
 func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 	t.Helper()
-
-	// TODO(bmizerany): test with `go test -count N` where N > 1 to ensure
-	// we don't try to create a database that already exists.
-	dbname := strings.ToLower(t.Name())
 
 	flagParseOnce.Do(flag.Parse)
 
@@ -144,19 +124,23 @@ func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 		defer maybeFlush(pg.Stdout)
 		defer maybeFlush(pg.Stderr)
 
-		if t.Failed() { //nolint
+		if t.Failed() {
 			// TODO(bmizerany): move logs here for review and name
 			// based on t.Name() they can be found in
 			// f.Name()
-		}
 
-		// TODO(bmizerany): cleanup new database in dbname
+			// TODO(bmizerany): allow option to keep postgres
+			// running so the programmer may connect via psql, or
+			// move data dir to a location for easy review with
+			// psql and print instructions on how to connect with
+			// postgres and psql commands.
+		}
 
 		// postgres automatically appends .csv to the filename for
 		// csvlog. The non-csv file is stderr.
 		csvlog := f.Name() + ".csv"
 
-		logQueryErrors(t, csvlog, dbname)
+		logQueryErrors(t, csvlog)
 
 		if pg.Process != nil {
 			// Strongly suggest that postgres shutdown gracefully
@@ -184,14 +168,20 @@ func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 
 	// attempt to connect within 3 seconds, otherwise fail
 	ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
 	for {
 		if err := db.PingContext(ctx); err != nil {
-			if *flagD > 0 {
-				t.Logf("pqx: error pinging %q: %v", connStr, err)
-			}
+			// TODO(bmizerany): Logging each ping error is noisy in the
+			// common case because postgres needs some time to boot, but in
+			// rare circumstances it might be useful to log the errors if
+			// one is having trouble connecting/booting postgres. It might
+			// be helpful to add a flag like `pqx.dd` for verbose logging?
+			// Or maybe log the errors if the level set by pqx.d is
+			// >0 because that signals verbosity is desired in
+			// logs.
 
+			// if the context was canceled, the ctx.Done() case will hit and
+			// we'll fail; otherwise we ignore the error, sleep, and
+			// then try again.
 			select {
 			case <-time.After(100 * time.Millisecond):
 				continue
@@ -200,65 +190,13 @@ func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 			}
 		}
 
-		// Until we have a cached "postgres" user connection setup by a
-		// Main() we need to shutdown the postgres user connections to
-		// keep things tidy and avoid wasting resources.
-		defer db.Close()
-
-		// TODO(bmizerany): override/replace ctx with new timeout?
-		// right now this will cancel if the ping took a long time and
-		// we just issued the command. In practice this may not be a
-		// problem since most times we should be able to ping/connect
-		// and create the database within the timeout.
-		db, connStr := switchDB(ctx, t, db, connStr, dbname)
-
 		_, err := db.ExecContext(ctx, initSQL)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if *flagC {
-			t.Cleanup(func() {
-				t.Helper()
-
-				t.Logf("pqx: pausing for introspection; CTRL+C (SIGINT) to resume")
-				t.Logf("pqx: psql %q", connStr)
-
-				waitForInterrupt()
-			})
-		}
-
 		return db, connStr
 	}
-}
-
-func waitForInterrupt() {
-	ch := make(chan os.Signal, 1)
-	defer signal.Stop(ch)
-	signal.Notify(ch, os.Interrupt)
-	<-ch
-}
-
-func switchDB(ctx context.Context, t testing.TB, db *sql.DB, connStr, dbname string) (*sql.DB, string) {
-	q := "CREATE DATABASE " + dbname + ";" // no threat of sql-injection here, we own dbname.
-	_, err := db.ExecContext(ctx, q)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Override the previous dbname by appending to the current connStr.
-	// Drivers like lib/pq will handle this properly.
-	connStr += " dbname=" + dbname
-
-	if *flagD > 0 {
-		t.Logf("pqx: switching to %q", connStr)
-	}
-
-	db, err = sql.Open("postgres", connStr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return db, connStr
 }
 
 func freePort(t testing.TB) string {
@@ -290,7 +228,7 @@ type logLineWriter struct {
 
 func (w *logLineWriter) Write(b []byte) (int, error) {
 	w.init()
-	defer w.Flush()
+	defer w.maybeLogLine()
 
 	n, err := w.buf.Write(b)
 	if err != nil {
@@ -300,6 +238,7 @@ func (w *logLineWriter) Write(b []byte) (int, error) {
 	return n, nil
 }
 
+// caller must hold w.m
 func (w *logLineWriter) maybeLogLine() (ok bool) {
 	line, err := w.buf.ReadBytes('\n')
 	if err != nil {
@@ -337,11 +276,10 @@ func maybeFlush(w io.Writer) {
 	}
 }
 
-//nolint
 const (
 	colLogTime = iota
 	colUserName
-	colDatabaseName
+	colDatabAseName
 	colProcessID
 	colConnectionFrom
 	colSessionID
@@ -351,7 +289,7 @@ const (
 	colVirtualTransactionID
 	colTransactionID
 	colErrorSeverity
-	colSQLStateCode
+	colSqlStateCode
 	colMessage
 	colDetail
 	colHint
@@ -365,7 +303,7 @@ const (
 	colBackendType
 )
 
-func logQueryErrors(t testing.TB, fname, dbname string) {
+func logQueryErrors(t testing.TB, fname string) {
 	t.Helper()
 
 	// errors should be rare here, so don't make this a t.Helper so that
@@ -386,10 +324,6 @@ func logQueryErrors(t testing.TB, fname, dbname string) {
 		}
 		if err != nil {
 			t.Fatal(err)
-		}
-
-		if row[colDatabaseName] != dbname {
-			continue
 		}
 
 		if row[colErrorSeverity] != "ERROR" {
