@@ -427,5 +427,7 @@ func logQueryErrors(t testing.TB, fname, dbname string) {
 func toDBName(name string) string {
 	// TODO(bmizerany): probably a naive approach. Let's see how long it
 	// takes until someone has a bug about this to decide what to do next.
-	return strings.ToLower(strings.Replace(name, "/", "_", -1))
+	name = strings.Replace(name, "/", "_", -1)
+	name = strings.Replace(name, "#", "_", -1)
+	return strings.ToLower(name)
 }
