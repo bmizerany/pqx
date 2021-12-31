@@ -23,19 +23,19 @@ func TestHighlightErrorPosition(t *testing.T) {
 	}{
 		"beginning of query": {
 			q:    "& SELECT",
-			want: "\n&💥 SELECT",
+			want: "\n&💥 SELECT\n",
 		},
 		"end of query": {
 			q:    "SELECT &",
-			want: "\nSELECT &💥",
+			want: "\nSELECT &💥\n",
 		},
 		"middle of query": {
 			q:    "SELECT &, 1",
-			want: "\nSELECT &,💥 1",
+			want: "\nSELECT &,💥 1\n",
 		},
 		"middle of query (multiline)": {
 			q:    "SELECT &,\n1",
-			want: "\nSELECT &,💥\n1",
+			want: "\nSELECT &,💥\n1\n",
 		},
 	}
 
@@ -79,7 +79,7 @@ type testLogCapture struct {
 }
 
 func (t *testLogCapture) Logf(format string, args ...interface{}) {
-	fmt.Fprintf(&t.log, format, args...)
+	fmt.Fprintln(&t.log, fmt.Sprintf(format, args...))
 }
 
 func (t *testLogCapture) Log(args ...interface{}) {

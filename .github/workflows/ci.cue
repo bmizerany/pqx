@@ -11,8 +11,20 @@ jobs: {
 		steps: [{
 			name: "Checkout"
 			uses: "actions/checkout@v2"
+		}, {
+			name: "Cache Go"
+			uses: "actions/cache@v2"
 			with: {
-				"fetch-depth": 1
+				path: """
+					~/.cache/go-build
+					~/go/pkg/mod
+					"""
+				key: """
+					go-${{ hashFiles('**/go.sum') }}
+					"""
+				"restore-keys": """
+					go-
+					"""
 			}
 		}, {
 			name: "Setup Go"
@@ -22,15 +34,17 @@ jobs: {
 			}
 		}, {
 			name: "Setup Postgres"
+			if:   "steps.cache-postgres.outputs.cache-hit != 'true'"
 			run: """
 				sudo apt-get install -y postgresql
-			"""
+				echo /usr/lib/postgresql/12/bin >> $GITHUB_PATH
+				"""
 		}, {
 			name: "Go Test"
-			env: PQX_D:   "5"
 			run: """
 				sudo -u postgres sh -c "
-					export PATH="/usr/lib/postgresql/12/bin:$PATH"
+					export PQX_D=0 # leave; set >0 if debugging is needed
+					export PATH="$PATH" # copy PATH from parent shell user
 					go test -v ./...
 				"
 				"""
