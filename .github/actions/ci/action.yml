@@ -1,6 +1,0 @@
-name: Test
-description: 'go test ./...'
-
-runs:
-  using: 'docker'
-  image: 'Dockerfile'

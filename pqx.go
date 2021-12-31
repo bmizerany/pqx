@@ -109,11 +109,13 @@ func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 	f.Close() // close so that postgres may take over
 
 	port := freePort(t)
-	if *flagD > 0 {
-		envD = strconv.Itoa(*flagD)
+
+	debug, err := strconv.Atoi(envD)
+	if envD != "" && err != nil {
+		t.Fatal("error parsing PQX_D:", err)
 	}
-	if envD == "" {
-		envD = "0"
+	if *flagD == 0 {
+		*flagD = debug
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -122,7 +124,7 @@ func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 		"postgres",
 
 		// args
-		"-d", strconv.Itoa(*flagD),
+		"-d", strconv.Itoa(debug),
 		"-p", port,
 		"-D", dataDir,
 		"-c", "lc_messages=en_US.UTF-8",
