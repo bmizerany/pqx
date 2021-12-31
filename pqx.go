@@ -56,6 +56,11 @@ import (
 	"time"
 )
 
+// Env
+var (
+	envD = os.Getenv("PQX_D")
+)
+
 // Flags
 var (
 	flagD = flag.Int("pqx.d", 0, "postgres debug level (0-5)")
@@ -104,6 +109,12 @@ func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 	f.Close() // close so that postgres may take over
 
 	port := freePort(t)
+	if *flagD > 0 {
+		envD = strconv.Itoa(*flagD)
+	}
+	if envD == "" {
+		envD = "0"
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	pg := exec.CommandContext(
