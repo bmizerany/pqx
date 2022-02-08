@@ -114,8 +114,8 @@ func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 	if envD != "" && err != nil {
 		t.Fatal("error parsing PQX_D:", err)
 	}
-	if *flagD == 0 {
-		*flagD = debug
+	if *flagD > 0 {
+		debug = *flagD
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -169,7 +169,7 @@ func StartExtra(t testing.TB, initSQL string) (db *sql.DB, connStr string) {
 		// csvlog. The non-csv file is stderr.
 		csvlog := f.Name() + ".csv"
 
-		logQueryErrors(t, csvlog, dbname)
+		defer logQueryErrors(t, csvlog, dbname)
 
 		if pg.Process != nil {
 			// Strongly suggest that postgres shutdown gracefully
