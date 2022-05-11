@@ -1,8 +1,8 @@
-module github.com/bmizerany/pqx
+module blake.io/pqx
 
-go 1.16
+go 1.18
 
 require (
-	github.com/google/go-cmp v0.5.6
-	github.com/lib/pq v1.10.2
+	github.com/lib/pq v1.10.5 // indirect
+	tailscale.com v1.24.2 // indirect
 )

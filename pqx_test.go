@@ -1,28 +1,21 @@
-package pqx
+package pqx_test
 
 import (
-	"context"
-	"database/sql"
 	"testing"
+
+	"blake.io/pqx"
+	_ "github.com/lib/pq"
 )
 
-func TestIsolation(t *testing.T) {
-	const schema = `
-		CREATE TABLE test ( n int PRIMARY KEY )
-	`
+func init() {
+	// TODO: pqx.SetVersion(`14`) // should only set for this packages tests
+	// since package tests run in isolation from each other.
+}
 
-	db0 := Start(t, schema)
-	db1 := Start(t, schema)
-
-	ctx := context.Background()
-	exec := func(db *sql.DB, q string) {
-		t.Helper()
-		_, err := db.ExecContext(ctx, q)
-		if err != nil {
-			t.Fatal(err)
-		}
+func TestStart(t *testing.T) {
+	db := pqx.Start(t, `CREATE table foo (id int)`)
+	_, err := db.Exec(`INSERT into foo values (1)`)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	exec(db0, "INSERT INTO test VALUES (1)")
-	exec(db1, "INSERT INTO test VALUES (1)")
 }
