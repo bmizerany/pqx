@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
 	"fmt"
-	"io"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,9 +22,6 @@ import (
 type Postgres struct {
 	Dir    string
 	Schema string
-
-	// TODO(bmizerany): OpenTimeout
-	// TODO(bmizerany): StartTimeout
 
 	startOnce sync.Once
 	cmd       *exec.Cmd
@@ -79,7 +76,8 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		// wrong; assuming the use of a an automatic t.Run with a known
 		// test name will suffice (i.e. TestThing/initdb)
 		// TODO(bmizerany): reuse data dir if exists
-		if err := initdb(ctx, p.logf, p.Dir); err != nil {
+		dataDir, err := initdb(ctx, p.logf, p.Dir)
+		if err != nil {
 			return err
 		}
 
@@ -87,7 +85,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		p.cmd = exec.CommandContext(ctx, "postgres",
 			// env
 			"-d", "2",
-			"-D", p.Dir,
+			"-D", dataDir,
 			"-p", p.port,
 
 			// resources
@@ -191,11 +189,34 @@ func (p *Postgres) Create(ctx context.Context, name string, logf func(string, ..
 
 // initdb creates a new postgres database using the initdb command and returns
 // the directory it was created in, or an error if any.
-func initdb(ctx context.Context, logf func(string, ...any), dir string) error {
-	cmd := exec.CommandContext(ctx, "initdb", dir)
+func initdb(ctx context.Context, logf func(string, ...any), rootDir string) (dir string, err error) {
+	dataDir, err := filepath.Abs(filepath.Join(rootDir, "data"))
+	if err != nil {
+		return "", err
+	}
+	if isPostgresDir(dataDir) {
+		return dataDir, nil
+	}
+
+	cmd := exec.CommandContext(ctx, "initdb", dataDir)
 	cmd.Stdout = &lineWriter{logf: logf}
 	cmd.Stderr = &lineWriter{logf: logf}
-	return cmd.Run()
+	defer flushLogs(cmd)
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return dataDir, nil
+}
+
+// isPostgresDir return true iif dir exists, is a directory, and contains the
+// file PG_VERSION; otherwise false.
+func isPostgresDir(dir string) bool {
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(dir, "PG_VERSION"))
+	return err == nil
 }
 
 func (p *Postgres) connStr(dbname string) string {
@@ -257,25 +278,6 @@ func randomPort() string {
 	}
 	defer ln.Close()
 	return strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
-}
-
-const hexDigit = "0123456789abcdef"
-
-func digest(s string) string {
-	// TODO(bmizerany): double check that this is correct.
-	hash := sha256.New()
-	io.WriteString(hash, s)
-	bs := hash.Sum(nil)
-	var buf []byte
-	for _, b := range bs {
-		buf = append(buf, hexDigit[b>>4], hexDigit[b&0xf])
-	}
-	return string(buf)
-}
-
-func digestShort(s string) string {
-	dig := digest(s)
-	return dig[:7]
 }
 
 func flushLogs(cmd *exec.Cmd) {
