@@ -1,4 +1,4 @@
-package pqx
+package pqxtest
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"blake.io/pqx"
 )
 
 // Open returns a sql.DB for schema if any. If no db has been started for
@@ -19,7 +21,7 @@ func Start(t *testing.T, schema string) *sql.DB {
 	}
 
 	dir := filepath.Join(os.TempDir(), "pqx", cwd)
-	p := &Postgres{
+	p := &pqx.Postgres{
 		Schema: schema,
 		Dir:    dir,
 	}
