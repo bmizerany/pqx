@@ -21,9 +21,9 @@ func TestMain(m *testing.M) {
 	if err := defaultPG.Start(context.Background(), log.Printf); err != nil {
 		log.Fatal(err)
 	}
-	defer defaultPG.Shutdown() // paranoid?
+	defer defaultPG.Shutdown() //nolint
 	code := m.Run()
-	defaultPG.Shutdown()
+	defaultPG.Shutdown() //nolint
 	os.Exit(code)
 }
 
@@ -49,7 +49,7 @@ func StartDB(t *testing.T, schema string) *sql.DB {
 	p := &pqx.Postgres{
 		Dir: getSharedDir(),
 	}
-	t.Cleanup(func() { p.Shutdown() })
+	t.Cleanup(func() { p.Shutdown() }) //nolint
 
 	db, cleanup, err := p.CreateDB(context.Background(), t.Logf, t.Name(), schema)
 	if err != nil {
