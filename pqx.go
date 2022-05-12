@@ -141,7 +141,6 @@ func (p *Postgres) Flush() {
 	flushLogs(p.cmd)
 }
 
-// TODO: document when to call this (in TestMain?)
 func (p *Postgres) Shutdown() error {
 	defer p.Flush()
 	if p.shutdown != nil {
@@ -156,9 +155,9 @@ func (p *Postgres) writeMainLogs(logf func(string, ...any)) {
 
 // Open creates a database for the schema, connects to it, and returns the
 // *sql.DB. .. more words needed here.
-func (p *Postgres) Create(ctx context.Context, name string, logf func(string, ...any)) (*sql.DB, error) {
+func (p *Postgres) CreateDB(ctx context.Context, name string, logf func(string, ...any)) (db *sql.DB, cleanup func(), err error) {
 	if err := p.Start(ctx, logf); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	name = strings.ToLower(name)
@@ -168,23 +167,37 @@ func (p *Postgres) Create(ctx context.Context, name string, logf func(string, ..
 	defer p.Flush()
 
 	q := fmt.Sprintf("CREATE DATABASE %s", dbname)
-	_, err := p.db.ExecContext(ctx, q)
+	_, err = p.db.ExecContext(ctx, q)
 	if err != nil {
 		p.writeMainLogs(logf)
-		return nil, err
+		return nil, nil, err
 	}
 
-	db, err := sql.Open("postgres", p.connStr(dbname))
+	db, err = sql.Open("postgres", p.connStr(dbname))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+
+	cleanup = func() {
+		db.Close()
+
+		// flush any logs we have on hand, we may not get them all, but
+		// at this point we'll only miss sessions disconnecting, etc.
+		// TODO(bmizerany): wait for sentinal log line before proceeding after Flush?
+		p.Flush()
+
+		// Loggers
+		// don't write them to logf because logf to avoid races with
+		// underlying implementations... make better words here.
+		p.logs.Delete(dbname)
 	}
 
 	_, err = db.ExecContext(ctx, p.Schema)
 	if err != nil {
-		db.Close()
-		return nil, err
+		cleanup()
+		return nil, nil, err
 	}
-	return db, nil
+	return db, cleanup, nil
 }
 
 // initdb creates a new postgres database using the initdb command and returns
