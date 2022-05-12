@@ -131,7 +131,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 	if p.err != nil {
 		logf("pqx: failed to start: %v", p.err)
 		logf("pqx: postgres start logs:")
-		io.Copy(&lineWriter{logf: logf}, strings.NewReader(p.mainlog.String()))
+		p.writeMainLogs(logf)
 	}
 	return p.err
 }
