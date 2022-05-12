@@ -85,9 +85,18 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 
 		p.port = randomPort()
 		p.cmd = exec.CommandContext(ctx, "postgres",
+			// env
 			"-d", "2",
 			"-D", p.Dir,
 			"-p", p.port,
+
+			// resources
+			"-c", "shared_buffers=12MB", // TODO(bmizerany): make configurable
+			"-c", "fsync=off",
+			"-c", "synchronous_commit=off",
+			"-c", "full_page_writes=off",
+
+			// logs
 			"-c", "log_line_prefix=%d :PQX_MAGIC_SEP: ",
 		)
 
