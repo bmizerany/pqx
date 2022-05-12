@@ -13,7 +13,7 @@ func init() {
 }
 
 func TestStart(t *testing.T) {
-	db := pqx.Start(t, `CREATE table foo (id int)`)
+	db := pqx.Start(t, `CREATE table foo (id int) BOOM`)
 	_, err := db.Exec(`INSERT into foo values (1)`)
 	if err != nil {
 		t.Fatal(err)

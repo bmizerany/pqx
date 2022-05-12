@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os/exec"
 	"strconv"
@@ -20,11 +19,6 @@ import (
 	"tailscale.com/logtail/backoff"
 )
 
-// has a version
-// has a schema
-// has sql.DBs
-// has a log
-// has log sinks
 type Postgres struct {
 	Dir    string
 	Schema string
@@ -38,29 +32,67 @@ type Postgres struct {
 	db        *sql.DB
 	port      string
 	shutdown  func() error
-	tmplName  string
+	logs      sync.Map
+	mainlog   strings.Builder
 }
 
-func (p *Postgres) Start(ctx context.Context) error {
+const magicSep = " :PQX_MAGIC_SEP: "
+
+type logLine struct {
+	dbname string
+	level  string
+	msg    string
+}
+
+func parseLogLine(line string) (ll logLine, ok bool) {
+	var hasMagicSep bool
+	ll.dbname, ll.msg, hasMagicSep = strings.Cut(line, magicSep)
+	if !hasMagicSep {
+		return logLine{}, false
+	}
+	ll.level, _, _ = strings.Cut(ll.msg, ":")
+	return ll, true
+}
+
+func (p *Postgres) logf(msg string, args ...any) {
+	// TODO(bmizerany): wrap below debug log in flag to avoid commenting/uncommenting
+	// log.Printf("DEBUG: "+msg, args...)
+
+	ll, ok := parseLogLine(msg)
+	if !ok {
+		fmt.Fprintf(&p.mainlog, msg, args...)
+		return
+	}
+
+	v, ok := p.logs.Load(ll.dbname)
+	if !ok {
+		fmt.Fprint(&p.mainlog, ll.msg)
+		return
+	}
+
+	v.(func(string, ...any))("[postgres]: " + ll.msg)
+}
+
+func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 	do := func() error {
 		// TODO: capture logs and report per test when something goes
 		// wrong; assuming the use of a an automatic t.Run with a known
 		// test name will suffice (i.e. TestThing/initdb)
-		logfTODO := log.Printf
-
 		// TODO(bmizerany): reuse data dir if exists
-		if err := initdb(ctx, logfTODO, p.Dir); err != nil {
+		if err := initdb(ctx, p.logf, p.Dir); err != nil {
 			return err
 		}
 
 		p.port = randomPort()
 		p.cmd = exec.CommandContext(ctx, "postgres",
+			"-d", "2",
 			"-D", p.Dir,
 			"-p", p.port,
+			"-c", "log_line_prefix=%d :PQX_MAGIC_SEP: ",
 		)
 
-		p.cmd.Stdout = &lineWriter{logf: logfTODO}
-		p.cmd.Stderr = &lineWriter{logf: logfTODO}
+		p.cmd.Stdout = &lineWriter{logf: p.logf}
+		p.cmd.Stderr = &lineWriter{logf: p.logf}
 		if err := p.cmd.Start(); err != nil {
 			return err
 		}
@@ -81,29 +113,17 @@ func (p *Postgres) Start(ctx context.Context) error {
 		}
 
 		p.Flush() // flush any interesting/helpful logs before we start pinging
-		if err := pingUntilUp(ctx, logfTODO, p.db); err != nil {
-			return err
-		}
-
-		p.tmplName = fmt.Sprintf("pqxtemplate_%s", digestShort(p.Schema))
-
-		_, err = p.db.ExecContext(ctx, "CREATE DATABASE "+p.tmplName)
-		if err != nil {
-			return err
-		}
-
-		tdb, err := sql.Open("postgres", p.connStr(p.tmplName))
-		if err != nil {
-			return err
-		}
-		defer tdb.Close()
-
-		_, err = tdb.ExecContext(ctx, p.Schema)
-		return err
+		return pingUntilUp(ctx, p.logf, p.db)
 	}
 	p.startOnce.Do(func() {
 		p.err = do()
 	})
+
+	if p.err != nil {
+		logf("pqx: failed to start: %v", p.err)
+		logf("pqx: postgres start logs:")
+		io.Copy(&lineWriter{logf: logf}, strings.NewReader(p.mainlog.String()))
+	}
 	return p.err
 }
 
@@ -123,22 +143,41 @@ func (p *Postgres) Shutdown() error {
 	return nil
 }
 
+func (p *Postgres) writeMainLogs(logf func(string, ...any)) {
+	logf(p.mainlog.String())
+}
+
 // Open creates a database for the schema, connects to it, and returns the
 // *sql.DB. .. more words needed here.
-func (p *Postgres) Create(ctx context.Context, name string) (*sql.DB, error) {
-	if err := p.Start(ctx); err != nil {
+func (p *Postgres) Create(ctx context.Context, name string, logf func(string, ...any)) (*sql.DB, error) {
+	if err := p.Start(ctx, logf); err != nil {
 		return nil, err
 	}
 
 	name = strings.ToLower(name)
 	dbname := fmt.Sprintf("%s_%s", name, randomString())
-	q := fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s", dbname, p.tmplName)
-	_, err := p.db.ExecContext(context.Background(), q)
+
+	p.logs.Store(dbname, logf)
+	defer p.Flush()
+
+	q := fmt.Sprintf("CREATE DATABASE %s", dbname)
+	_, err := p.db.ExecContext(ctx, q)
+	if err != nil {
+		p.writeMainLogs(logf)
+		return nil, err
+	}
+
+	db, err := sql.Open("postgres", p.connStr(dbname))
 	if err != nil {
 		return nil, err
 	}
 
-	return sql.Open("postgres", p.connStr(dbname))
+	_, err = db.ExecContext(ctx, p.Schema)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
 }
 
 // initdb creates a new postgres database using the initdb command and returns

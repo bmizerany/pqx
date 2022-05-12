@@ -14,13 +14,12 @@ func Start(t *testing.T, schema string) *sql.DB {
 		Schema: schema,
 		Dir:    t.TempDir(),
 	}
-	db, err := p.Create(context.Background(), t.Name())
+	t.Cleanup(func() { p.Shutdown() })
+
+	db, err := p.Create(context.Background(), t.Name(), t.Logf)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		db.Close()
-		p.Shutdown()
-	})
+	t.Cleanup(func() { db.Close() })
 	return db
 }
