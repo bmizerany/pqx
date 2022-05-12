@@ -15,6 +15,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode"
 
 	"tailscale.com/logtail/backoff"
 )
@@ -94,7 +95,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 			"-c", "full_page_writes=off",
 
 			// logs
-			"-c", "log_line_prefix=%d :PQX_MAGIC_SEP: ",
+			"-c", "log_line_prefix=%d"+magicSep,
 		)
 
 		p.cmd.Stdout = &lineWriter{logf: p.logf}
@@ -159,7 +160,7 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 		return nil, nil, err
 	}
 
-	name = strings.ToLower(name)
+	name = cleanName(name)
 	dbname := fmt.Sprintf("%s_%s", name, randomString())
 
 	p.logs.Store(dbname, logf)
@@ -301,4 +302,14 @@ func randomString() string {
 	var buf [8]byte
 	rand.Read(buf[:])
 	return fmt.Sprintf("%x", buf)
+}
+
+func cleanName(name string) string {
+	rr := []rune(name)
+	for i, r := range rr {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			rr[i] = '_'
+		}
+	}
+	return strings.ToLower(string(rr))
 }

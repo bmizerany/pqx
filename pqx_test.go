@@ -19,3 +19,20 @@ func TestStart(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSubTestNames(t *testing.T) {
+	cases := []string{
+		"a",
+		"a b c",
+		"a, b, c",
+		"(a)",
+		"(B)",
+		"a-b-c",
+		"*a*b*c",
+		"a*b*c",
+	}
+
+	for _, name := range cases {
+		t.Run(name, func(t *testing.T) { pqxtest.CreateDB(t, "") })
+	}
+}
