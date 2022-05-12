@@ -13,10 +13,9 @@ import (
 
 var defaultPG *pqx.Postgres
 
-func TestMain(m *testing.M, schema string) {
+func TestMain(m *testing.M) {
 	defaultPG = &pqx.Postgres{
-		Schema: schema,
-		Dir:    getSharedDir(),
+		Dir: getSharedDir(),
 	}
 	// TODO(bmizerany): timeout ctx?
 	if err := defaultPG.Start(context.Background(), log.Printf); err != nil {
@@ -28,13 +27,13 @@ func TestMain(m *testing.M, schema string) {
 	os.Exit(code)
 }
 
-func OpenDB(t *testing.T) *sql.DB {
+func CreateDB(t *testing.T, schema string) *sql.DB {
 	t.Helper()
 	if defaultPG == nil {
 		t.Fatal("pqxtest.TestMain not called")
 	}
 
-	db, cleanup, err := defaultPG.CreateDB(context.Background(), t.Name(), t.Logf)
+	db, cleanup, err := defaultPG.CreateDB(context.Background(), t.Logf, t.Name(), schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,12 +47,11 @@ func StartDB(t *testing.T, schema string) *sql.DB {
 	t.Helper()
 
 	p := &pqx.Postgres{
-		Schema: schema,
-		Dir:    getSharedDir(),
+		Dir: getSharedDir(),
 	}
 	t.Cleanup(func() { p.Shutdown() })
 
-	db, cleanup, err := p.CreateDB(context.Background(), t.Name(), t.Logf)
+	db, cleanup, err := p.CreateDB(context.Background(), t.Logf, t.Name(), schema)
 	if err != nil {
 		t.Fatal(err)
 	}

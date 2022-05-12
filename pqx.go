@@ -20,8 +20,7 @@ import (
 )
 
 type Postgres struct {
-	Dir    string
-	Schema string
+	Dir string
 
 	startOnce sync.Once
 	cmd       *exec.Cmd
@@ -155,7 +154,7 @@ func (p *Postgres) writeMainLogs(logf func(string, ...any)) {
 
 // Open creates a database for the schema, connects to it, and returns the
 // *sql.DB. .. more words needed here.
-func (p *Postgres) CreateDB(ctx context.Context, name string, logf func(string, ...any)) (db *sql.DB, cleanup func(), err error) {
+func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name, schema string) (db *sql.DB, cleanup func(), err error) {
 	if err := p.Start(ctx, logf); err != nil {
 		return nil, nil, err
 	}
@@ -192,7 +191,7 @@ func (p *Postgres) CreateDB(ctx context.Context, name string, logf func(string, 
 		p.logs.Delete(dbname)
 	}
 
-	_, err = db.ExecContext(ctx, p.Schema)
+	_, err = db.ExecContext(ctx, schema)
 	if err != nil {
 		cleanup()
 		return nil, nil, err

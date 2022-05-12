@@ -8,11 +8,12 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	pqxtest.TestMain(m, `CREATE table foo (id int)`)
+	pqxtest.TestMain(m)
 }
 
 func TestStart(t *testing.T) {
-	db := pqxtest.OpenDB(t)
+	const schema = `CREATE TABLE foo (n int);`
+	db := pqxtest.CreateDB(t, schema)
 	_, err := db.Exec(`INSERT into foo values (1)`)
 	if err != nil {
 		t.Fatal(err)
