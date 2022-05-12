@@ -112,7 +112,9 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		p.db = db
 		p.shutdown = func() error {
 			db.Close()
-			p.cmd.Process.Signal(syscall.SIGQUIT)
+			if err := p.cmd.Process.Signal(syscall.SIGQUIT); err != nil {
+				return err
+			}
 			if err := p.cmd.Wait(); err != nil {
 				return err
 			}
@@ -300,7 +302,9 @@ func flushLogs(cmd *exec.Cmd) {
 
 func randomString() string {
 	var buf [8]byte
-	rand.Read(buf[:])
+	if _, err := rand.Read(buf[:]); err != nil {
+		panic(err)
+	}
 	return fmt.Sprintf("%x", buf)
 }
 
