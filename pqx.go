@@ -211,10 +211,12 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 		p.logs.Delete(dbname)
 	}
 
-	_, err = db.ExecContext(ctx, schema)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
+	if schema != "" {
+		_, err = db.ExecContext(ctx, schema)
+		if err != nil {
+			cleanup()
+			return nil, nil, err
+		}
 	}
 	return db, cleanup, nil
 }
