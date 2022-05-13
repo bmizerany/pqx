@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,8 +21,11 @@ import (
 	"tailscale.com/logtail/backoff"
 )
 
+const DefaultVersion = "14.2.0"
+
 type Postgres struct {
-	Dir string
+	Version string // for a list of versions by OS, see: https://mvnrepository.com/artifact/io.zonky.test.postgres
+	Dir     string
 
 	startOnce sync.Once
 	cmd       *exec.Cmd
@@ -70,19 +74,32 @@ func (p *Postgres) logf(msg string, args ...any) {
 	v.(func(string, ...any))("[postgres]: " + ll.msg)
 }
 
+func (p *Postgres) version() string {
+	if p.Version != "" {
+		return p.Version
+	}
+	return DefaultVersion
+}
+
 func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 	do := func() error {
+
+		binDir, err := fetchBinary(ctx, p.version())
+		if err != nil {
+			return err
+		}
+
 		// TODO: capture logs and report per test when something goes
 		// wrong; assuming the use of a an automatic t.Run with a known
 		// test name will suffice (i.e. TestThing/initdb)
 		// TODO(bmizerany): reuse data dir if exists
-		dataDir, err := initdb(ctx, p.logf, p.Dir)
+		dataDir, err := initdb(ctx, p.logf, binDir, p.Dir)
 		if err != nil {
 			return err
 		}
 
 		p.port = randomPort()
-		p.cmd = exec.CommandContext(ctx, "postgres",
+		p.cmd = exec.CommandContext(ctx, binDir+"/postgres",
 			// env
 			"-d", "2",
 			"-D", dataDir,
@@ -204,7 +221,7 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 
 // initdb creates a new postgres database using the initdb command and returns
 // the directory it was created in, or an error if any.
-func initdb(ctx context.Context, logf func(string, ...any), rootDir string) (dir string, err error) {
+func initdb(ctx context.Context, logf func(string, ...any), binDir, rootDir string) (dir string, err error) {
 	dataDir, err := filepath.Abs(filepath.Join(rootDir, "data"))
 	if err != nil {
 		return "", err
@@ -213,7 +230,7 @@ func initdb(ctx context.Context, logf func(string, ...any), rootDir string) (dir
 		return dataDir, nil
 	}
 
-	cmd := exec.CommandContext(ctx, "initdb", dataDir)
+	cmd := exec.CommandContext(ctx, path.Join(binDir, "initdb"), dataDir)
 	cmd.Stdout = &lineWriter{logf: logf}
 	cmd.Stderr = &lineWriter{logf: logf}
 	defer flushLogs(cmd)

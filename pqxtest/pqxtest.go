@@ -15,7 +15,8 @@ var defaultPG *pqx.Postgres
 
 func TestMain(m *testing.M) {
 	defaultPG = &pqx.Postgres{
-		Dir: getSharedDir(),
+		Version: os.Getenv("PQX_PG_VERSION"),
+		Dir:     getSharedDir(),
 	}
 	// TODO(bmizerany): timeout ctx?
 	if err := defaultPG.Start(context.Background(), log.Printf); err != nil {
