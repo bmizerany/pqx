@@ -33,6 +33,9 @@ func CreateDB(t *testing.T, schema string) *sql.DB {
 	if defaultPG == nil {
 		t.Fatal("pqxtest.TestMain not called")
 	}
+	t.Cleanup(func() {
+		defaultPG.Flush()
+	})
 
 	db, cleanup, err := defaultPG.CreateDB(context.Background(), t.Logf, t.Name(), schema)
 	if err != nil {

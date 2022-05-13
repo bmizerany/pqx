@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -34,7 +35,7 @@ type Postgres struct {
 	port      string
 	shutdown  func() error
 	logs      sync.Map
-	mainlog   strings.Builder
+	mainlog   bytes.Buffer
 }
 
 const magicSep = " :PQX_MAGIC_SEP: "
@@ -83,7 +84,6 @@ func (p *Postgres) version() string {
 
 func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 	do := func() error {
-
 		binDir, err := fetchBinary(ctx, p.version())
 		if err != nil {
 			return err
@@ -169,7 +169,8 @@ func (p *Postgres) Shutdown() error {
 }
 
 func (p *Postgres) writeMainLogs(logf func(string, ...any)) {
-	logf(p.mainlog.String())
+	lw := &lineWriter{logf: logf}
+	io.Copy(lw, bytes.NewReader(p.mainlog.Bytes()))
 }
 
 // Open creates a database for the schema, connects to it, and returns the
@@ -260,6 +261,7 @@ func (p *Postgres) connStr(dbname string) string {
 type lineWriter struct {
 	logf func(string, ...any)
 
+	mu      sync.Mutex
 	lineBuf strings.Builder
 }
 
@@ -267,20 +269,34 @@ func (lw *lineWriter) Flush() error {
 	if lw == nil {
 		return nil
 	}
+
 	lw.logf(lw.lineBuf.String())
+
+	lw.mu.Lock()
+	defer lw.mu.Unlock()
 	lw.lineBuf.Reset()
 	return nil
 }
 
 var newline = []byte{'\n'}
 
+func (lw *lineWriter) writeLocked(p []byte, includeNewLine bool) {
+	lw.mu.Lock()
+	defer lw.mu.Unlock()
+	lw.lineBuf.Write(p)
+	if includeNewLine {
+		lw.lineBuf.WriteByte('\n')
+	}
+}
+
 func (lw *lineWriter) Write(p []byte) (n int, err error) {
+	// log.Printf("DEBUG: %s", string(p))
+
 	p0 := p
 	for {
 		before, after, hasNewline := bytes.Cut(p, newline)
-		lw.lineBuf.Write(before)
+		lw.writeLocked(before, hasNewline)
 		if hasNewline {
-			lw.lineBuf.WriteByte('\n')
 			if err := lw.Flush(); err != nil {
 				return 0, err
 			}
