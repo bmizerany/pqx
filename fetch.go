@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -43,7 +42,7 @@ func fetchBinary(ctx context.Context, version string) (binDir string, err error)
 		if err != nil {
 			return "", err
 		}
-		pgDir, err = filepath.Abs(filepath.Join(cacheDir, ".pqx/cache", version))
+		pgDir, err = filepath.Abs(filepath.Join(cacheDir, ".cache/pqx", version))
 		if err != nil {
 			return "", err
 		}
@@ -140,7 +139,6 @@ func extractTxn(ctx context.Context, dir string, r io.Reader) (err error) {
 
 		switch h.Typeflag {
 		case tar.TypeReg:
-			log.Println("!!!!! extracting", name)
 			f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, os.FileMode(h.Mode))
 			if err != nil {
 				return err
@@ -153,15 +151,12 @@ func extractTxn(ctx context.Context, dir string, r io.Reader) (err error) {
 				return err
 			}
 		case tar.TypeSymlink:
-			log.Println("!!!!! creating symlink:", name)
 			if err := os.RemoveAll(name); err != nil {
 				return err
 			}
 			if err := os.Symlink(h.Linkname, name); err != nil {
 				return err
 			}
-		default:
-			log.Println("!!!!! skipping:", name, os.FileMode(h.Mode))
 		}
 	}
 	return nil
