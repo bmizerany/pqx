@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -33,8 +35,9 @@ type Postgres struct {
 	db        *sql.DB
 	port      string
 	shutdown  func() error
-	logs      sync.Map
-	mainlog   strings.Builder
+	mainlog   bytes.Buffer
+
+	logs sync.Map
 }
 
 const magicSep = " :PQX_MAGIC_SEP: "
@@ -43,12 +46,17 @@ type logLine struct {
 	dbname string
 	level  string
 	msg    string
+	cont   bool
 }
 
 func parseLogLine(line string) (ll logLine, ok bool) {
 	var hasMagicSep bool
 	ll.dbname, ll.msg, hasMagicSep = strings.Cut(line, magicSep)
 	if !hasMagicSep {
+		cont := len(line) > 0 && unicode.IsSpace(rune(line[0]))
+		if cont {
+			return logLine{cont: true, msg: line}, true
+		}
 		return logLine{}, false
 	}
 	ll.level, _, _ = strings.Cut(ll.msg, ":")
@@ -64,6 +72,22 @@ func (p *Postgres) logf(msg string, args ...any) {
 		fmt.Fprintf(&p.mainlog, msg, args...)
 		return
 	}
+
+	// The ("*lastseen*") key is owned by this function.
+	//
+	// NOTE: This is hacky, but works nicely and avoids the need for a special mutex just for this value.
+	// Also note: The '*' is an invalid dbname, so we avoid the unlikely
+	// collision with a user table named the same as our lastseen key.
+	const lastSeenKey = "*lastseen*"
+
+	if ll.cont {
+		lastSeen, ok := p.logs.Load(lastSeenKey)
+		log.Printf("continuing log line (%v): %s", lastSeen, msg)
+		if ok {
+			ll.dbname = lastSeen.(string)
+		}
+	}
+	p.logs.Store(lastSeenKey, ll.dbname)
 
 	v, ok := p.logs.Load(ll.dbname)
 	if !ok {
@@ -83,7 +107,6 @@ func (p *Postgres) version() string {
 
 func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 	do := func() error {
-
 		binDir, err := fetchBinary(ctx, p.version())
 		if err != nil {
 			return err
@@ -169,7 +192,8 @@ func (p *Postgres) Shutdown() error {
 }
 
 func (p *Postgres) writeMainLogs(logf func(string, ...any)) {
-	logf(p.mainlog.String())
+	lw := &lineWriter{logf: logf}
+	io.Copy(lw, bytes.NewReader(p.mainlog.Bytes())) //nolint
 }
 
 // Open creates a database for the schema, connects to it, and returns the
@@ -255,40 +279,6 @@ func isPostgresDir(dir string) bool {
 
 func (p *Postgres) connStr(dbname string) string {
 	return fmt.Sprintf("host=localhost port=%s dbname=%s sslmode=disable", p.port, dbname)
-}
-
-type lineWriter struct {
-	logf func(string, ...any)
-
-	lineBuf strings.Builder
-}
-
-func (lw *lineWriter) Flush() error {
-	if lw == nil {
-		return nil
-	}
-	lw.logf(lw.lineBuf.String())
-	lw.lineBuf.Reset()
-	return nil
-}
-
-var newline = []byte{'\n'}
-
-func (lw *lineWriter) Write(p []byte) (n int, err error) {
-	p0 := p
-	for {
-		before, after, hasNewline := bytes.Cut(p, newline)
-		lw.lineBuf.Write(before)
-		if hasNewline {
-			lw.lineBuf.WriteByte('\n')
-			if err := lw.Flush(); err != nil {
-				return 0, err
-			}
-			p = after
-		} else {
-			return len(p0), nil
-		}
-	}
 }
 
 // pingUntilUp pings the database until it's up; or the provided context is
