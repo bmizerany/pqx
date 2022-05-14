@@ -65,14 +65,24 @@ func (lp *Logplex) Flush() error {
 	}
 
 	line := lp.lineBuf.Bytes()
+	sent, err := lp.sendLine(line)
+	if err != nil {
+		return err
+	}
+	if sent {
+		return nil
+	}
+	_, err = lp.Sink.Write(lp.lineBuf.Bytes())
+	return err
+}
+
+func (lp *Logplex) sendLine(line []byte) (sent bool, err error) {
 	key, message := lp.Split(line)
 	for prefix, w := range lp.sinks {
 		if key == prefix {
 			_, err := w.Write(message)
-			return err
+			return true, err
 		}
 	}
-
-	_, err := lp.Sink.Write(lp.lineBuf.Bytes())
-	return err
+	return false, nil
 }

@@ -18,7 +18,7 @@ func newTestSplitter() func(line []byte) (key string, msg []byte) {
 	}
 }
 
-func TestPlex(t *testing.T) {
+func TestLogplex(t *testing.T) {
 	var (
 		d0 strings.Builder
 		d1 strings.Builder
@@ -26,27 +26,39 @@ func TestPlex(t *testing.T) {
 		d3 strings.Builder
 	)
 
-	p := &Logplex{
+	lp := &Logplex{
 		Sink:  &d0,
 		Split: newTestSplitter(),
 	}
-	p.Watch("d1", &d1)
-	p.Watch("d2", &d2)
+	lp.Watch("d1", &d1)
+	lp.Watch("d2", &d2)
 
-	p.Write([]byte("zero\n"))
-	p.Write([]byte("d0::zero\n")) // unknown prefix; sent to Drain
-	p.Write([]byte("d1::one\n"))
-	p.Write([]byte("d1::a"))
-	p.Write([]byte("b\n"))
-	p.Write([]byte("d2::t"))
-	p.Write([]byte("wo\n"))
-	p.Write([]byte("d3::three\n"))
+	lp.Write([]byte("zero\n"))
+	lp.Write([]byte("d0::zero\n")) // unknown prefix; sent to Drain
+	lp.Write([]byte("d1::one\n"))
+	lp.Write([]byte("d1::a"))
+	lp.Write([]byte("b\n"))
+	lp.Write([]byte("d2::t"))
+	lp.Write([]byte("wo\n"))
 
-	p.Watch("d3", &d3)
-	p.Write([]byte("d3::3\n"))
+	lp.Write([]byte("d3::three\n")) // write d3 before Watch
+	lp.Watch("d3", &d3)
+	lp.Write([]byte("d3::3\n"))
 
 	diff.Test(t, t.Errorf, d0.String(), "zero\nd0::zero\nd3::three\n") // captures d3 logs until Watch("d3", ...)
 	diff.Test(t, t.Errorf, d1.String(), "one\nab\n")
 	diff.Test(t, t.Errorf, d2.String(), "two\n")
 	diff.Test(t, t.Errorf, d3.String(), "3\n")
+}
+
+func TestNothingAttached(t *testing.T) {
+	var d strings.Builder
+
+	lp := &Logplex{
+		Sink:  &d,
+		Split: newTestSplitter(),
+	}
+
+	lp.Write([]byte("zero\n"))
+	diff.Test(t, t.Errorf, d.String(), "zero\n")
 }
