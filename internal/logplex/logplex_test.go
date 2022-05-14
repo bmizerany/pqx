@@ -30,6 +30,11 @@ func TestLogplex(t *testing.T) {
 		Sink:  &d0,
 		Split: newTestSplitter(),
 	}
+
+	lp.Write([]byte("nothing\n"))
+	diff.Test(t, t.Errorf, d0.String(), "nothing\n")
+	d0.Reset()
+
 	lp.Watch("d1", &d1)
 	lp.Watch("d2", &d2)
 
@@ -45,20 +50,11 @@ func TestLogplex(t *testing.T) {
 	lp.Watch("d3", &d3)
 	lp.Write([]byte("d3::3\n"))
 
-	diff.Test(t, t.Errorf, d0.String(), "zero\nd0::zero\nd3::three\n") // captures d3 logs until Watch("d3", ...)
+	lp.Detach("d1")
+	lp.Write([]byte("d1::detached\n"))
+
+	diff.Test(t, t.Errorf, d0.String(), "zero\nd0::zero\nd3::three\nd1::detached\n") // captures d3 logs until Watch("d3", ...)
 	diff.Test(t, t.Errorf, d1.String(), "one\nab\n")
 	diff.Test(t, t.Errorf, d2.String(), "two\n")
 	diff.Test(t, t.Errorf, d3.String(), "3\n")
-}
-
-func TestNothingAttached(t *testing.T) {
-	var d strings.Builder
-
-	lp := &Logplex{
-		Sink:  &d,
-		Split: newTestSplitter(),
-	}
-
-	lp.Write([]byte("zero\n"))
-	diff.Test(t, t.Errorf, d.String(), "zero\n")
 }

@@ -48,6 +48,12 @@ func (lp *Logplex) Write(p []byte) (int, error) {
 	}
 }
 
+func (lp *Logplex) Detach(prefix string) {
+	lp.mu.Lock()
+	defer lp.mu.Unlock()
+	delete(lp.sinks, prefix)
+}
+
 // Flush flushes the any underlying buffered contents to any corresponding sink.
 //
 // The contents flushed may not be a complete line, or have enough data to
