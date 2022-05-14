@@ -65,9 +65,10 @@ func (lp *Logplex) Flush() error {
 	}
 
 	line := lp.lineBuf.Bytes()
+	key, message := lp.Split(line)
 	for prefix, w := range lp.sinks {
-		if bytes.HasPrefix(line, []byte(prefix)) {
-			_, err := w.Write(lp.lineBuf.Bytes())
+		if key == prefix {
+			_, err := w.Write(message)
 			return err
 		}
 	}
