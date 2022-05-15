@@ -1,10 +1,7 @@
 name: "test"
-on: {
-	push: {
-		branches: ["main"]
-	}
-	pull_request: null
-}
+
+on: pull_request: branches: ["*"]
+
 jobs: {
 	test: {
 		"runs-on": "ubuntu-latest"
