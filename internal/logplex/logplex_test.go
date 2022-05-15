@@ -73,7 +73,7 @@ func TestLogplex(t *testing.T) {
 	write(":3\n")
 
 	// detach d1 so it goes to Sink
-	lp.Detach("d1")
+	lp.Unwatch("d1")
 	lp.Write([]byte("d1::detached\n"))
 
 	diff.Test(t, t.Errorf, d0.String(), "zero\nd0::zero\nd3::three\nd1::detached\n") // captures d3 logs until Watch("d3", ...)

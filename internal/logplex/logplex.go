@@ -2,6 +2,7 @@ package logplex
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"sync"
 )
@@ -74,7 +75,7 @@ func (lp *Logplex) flushLocked() error {
 	return err
 }
 
-func (lp *Logplex) Detach(prefix string) {
+func (lp *Logplex) Unwatch(prefix string) {
 	lp.mu.Lock()
 	defer lp.mu.Unlock()
 	delete(lp.sinks, prefix)
@@ -101,4 +102,23 @@ func (lp *Logplex) sendLine(line []byte) (sent bool, err error) {
 		}
 	}
 	return false, nil
+}
+
+type logfWriter struct {
+	logf func(string, ...any)
+}
+
+func LogfWriter(logf func(string, ...any)) io.Writer {
+	return &logfWriter{logf}
+}
+
+func (w *logfWriter) Write(p []byte) (int, error) {
+	w.logf(string(p))
+	return len(p), nil
+}
+
+func LogfFromWriter(w io.Writer) func(string, ...any) {
+	return func(format string, args ...any) {
+		fmt.Fprintf(w, format, args...)
+	}
 }

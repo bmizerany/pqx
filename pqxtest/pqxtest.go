@@ -1,17 +1,22 @@
 package pqxtest
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"unicode"
 
 	"blake.io/pqx"
+	"blake.io/pqx/internal/logplex"
 )
 
 var defaultPG *pqx.Postgres
+var startLog bytes.Buffer
 
 func TestMain(m *testing.M) {
 	defaultPG = &pqx.Postgres{
@@ -19,7 +24,8 @@ func TestMain(m *testing.M) {
 		Dir:     getSharedDir(),
 	}
 	// TODO(bmizerany): timeout ctx?
-	if err := defaultPG.Start(context.Background(), log.Printf); err != nil {
+	if err := defaultPG.Start(context.Background(), logplex.LogfFromWriter(&startLog)); err != nil {
+		startLog.WriteTo(os.Stderr)
 		log.Fatal(err)
 	}
 	defer defaultPG.Shutdown() //nolint
@@ -37,7 +43,8 @@ func CreateDB(t *testing.T, schema string) *sql.DB {
 		defaultPG.Flush()
 	})
 
-	db, cleanup, err := defaultPG.CreateDB(context.Background(), t.Logf, t.Name(), schema)
+	name := cleanName(t.Name())
+	db, cleanup, err := defaultPG.CreateDB(context.Background(), t.Logf, name, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,4 +77,14 @@ func getSharedDir() string {
 		panic(err)
 	}
 	return filepath.Join(os.TempDir(), "pqx", cwd)
+}
+
+func cleanName(name string) string {
+	rr := []rune(name)
+	for i, r := range rr {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			rr[i] = '_'
+		}
+	}
+	return strings.ToLower(string(rr))
 }

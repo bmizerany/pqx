@@ -13,11 +13,9 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
-	"unicode"
 
 	"blake.io/pqx/internal/logplex"
 	"tailscale.com/logtail/backoff"
@@ -35,29 +33,6 @@ type Postgres struct {
 	port      string
 	shutdown  func() error
 	out       *logplex.Logplex
-}
-
-const magicSep = " :PQX_MAGIC_SEP: "
-
-type logLine struct {
-	dbname string
-	level  string
-	msg    string
-	cont   bool
-}
-
-func parseLogLine(line string) (ll logLine, ok bool) {
-	var hasMagicSep bool
-	ll.dbname, ll.msg, hasMagicSep = strings.Cut(line, magicSep)
-	if !hasMagicSep {
-		cont := len(line) > 0 && unicode.IsSpace(rune(line[0]))
-		if cont {
-			return logLine{cont: true, msg: line}, true
-		}
-		return logLine{}, false
-	}
-	ll.level, _, _ = strings.Cut(ll.msg, ":")
-	return ll, true
 }
 
 func (p *Postgres) version() string {
@@ -88,10 +63,10 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		const magicSep = " ::pqx:: "
 
 		p.out = &logplex.Logplex{
-			Sink: &logfWriter{logf},
+			Sink: logplex.LogfWriter(logf),
 			Split: func(line []byte) (string, []byte) {
-				key, msg, found := bytes.Cut(line, []byte(magicSep))
-				if !found {
+				key, msg, hasMagicSep := bytes.Cut(line, []byte(magicSep))
+				if !hasMagicSep {
 					return "", line
 				}
 				return string(key), msg
@@ -138,7 +113,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		}
 
 		p.Flush() // flush any interesting/helpful logs before we start pinging
-		return pingUntilUp(ctx, logfFromWriter(p.out), p.db)
+		return pingUntilUp(ctx, logplex.LogfFromWriter(p.out), p.db)
 	}
 	p.startOnce.Do(func() {
 		p.err = do()
@@ -166,10 +141,11 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 		return nil, nil, err
 	}
 
-	name = cleanName(name)
 	dbname := fmt.Sprintf("%s_%s", name, randomString())
 
 	defer p.Flush()
+
+	p.out.Watch(dbname, logplex.LogfWriter(logf))
 
 	q := fmt.Sprintf("CREATE DATABASE %s", dbname)
 	_, err = p.db.ExecContext(ctx, q)
@@ -190,6 +166,7 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 		// at this point we'll only miss sessions disconnecting, etc.
 		// TODO(bmizerany): wait for sentinal log line before proceeding after Flush?
 		p.Flush()
+		p.out.Unwatch(dbname)
 	}
 
 	if schema != "" {
@@ -260,40 +237,10 @@ func randomPort() string {
 	return strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
 }
 
-func flushLogs(cmd *exec.Cmd) {
-	cmd.Stdout.(*lineWriter).Flush()
-	cmd.Stderr.(*lineWriter).Flush()
-}
-
 func randomString() string {
 	var buf [8]byte
 	if _, err := rand.Read(buf[:]); err != nil {
 		panic(err)
 	}
 	return fmt.Sprintf("%x", buf)
-}
-
-func cleanName(name string) string {
-	rr := []rune(name)
-	for i, r := range rr {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			rr[i] = '_'
-		}
-	}
-	return strings.ToLower(string(rr))
-}
-
-func logfFromWriter(w io.Writer) func(string, ...any) {
-	return func(format string, args ...any) {
-		fmt.Fprintf(w, format, args...)
-	}
-}
-
-type logfWriter struct {
-	logf func(string, ...any)
-}
-
-func (w *logfWriter) Write(p []byte) (int, error) {
-	w.logf(string(p))
-	return len(p), nil
 }
