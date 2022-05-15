@@ -9,30 +9,44 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 
 	"blake.io/pqx"
 	"blake.io/pqx/internal/logplex"
 )
 
-var testPG *pqx.Postgres
-var startLog bytes.Buffer
+var (
+	testPG *pqx.Postgres
+)
 
 func TestMain(m *testing.M) {
 	testPG = &pqx.Postgres{
 		Version: os.Getenv("PQX_PG_VERSION"),
 		Dir:     getSharedDir(),
 	}
-	// TODO(bmizerany): timeout ctx?
-	if err := testPG.Start(context.Background(), logplex.LogfFromWriter(&startLog)); err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	startLog := new(bytes.Buffer)
+	log.Print("Starting pqxtest")
+	if err := testPG.Start(ctx, logplex.LogfFromWriter(startLog)); err != nil {
 		if _, err := startLog.WriteTo(os.Stderr); err != nil {
 			panic(err)
 		}
 		log.Fatal(err)
 	}
 	defer testPG.Shutdown() //nolint
+
+	// free buffer
+	startLog = nil
+
 	code := m.Run()
-	testPG.Shutdown() //nolint
+	log.Print("Shutting down pqxtest")
+	if err := testPG.Shutdown(); err != nil {
+		log.Fatal(err)
+	}
 	os.Exit(code)
 }
 
@@ -51,25 +65,6 @@ func CreateDB(t *testing.T, schema string) *sql.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(cleanup)
-	return db
-}
-
-// Open returns a sql.DB for schema if any. If no db has been started for
-// schema, one will be started, connected to, and returned.
-func StartDB(t *testing.T, schema string) *sql.DB {
-	t.Helper()
-
-	p := &pqx.Postgres{
-		Dir: getSharedDir(),
-	}
-	t.Cleanup(func() { p.Shutdown() }) //nolint
-
-	db, cleanup, err := p.CreateDB(context.Background(), t.Logf, t.Name(), schema)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(cleanup)
-
 	return db
 }
 
