@@ -45,7 +45,7 @@ func TestLogplex(t *testing.T) {
 		}
 	}
 
-	lp.Write([]byte("nothing\n"))
+	write("nothing\n") //nolint
 	diff.Test(t, t.Errorf, d0.String(), "nothing\n")
 	d0.Reset()
 
@@ -74,7 +74,7 @@ func TestLogplex(t *testing.T) {
 
 	// detach d1 so it goes to Sink
 	lp.Unwatch("d1")
-	lp.Write([]byte("d1::detached\n"))
+	write("d1::detached\n")
 
 	diff.Test(t, t.Errorf, d0.String(), "zero\nd0::zero\nd3::three\nd1::detached\n") // captures d3 logs until Watch("d3", ...)
 	diff.Test(t, t.Errorf, d1.String(), "one\nab\n")
