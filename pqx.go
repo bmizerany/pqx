@@ -44,6 +44,17 @@ func (p *Postgres) version() string {
 
 func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 	do := func() error {
+		p.out = &logplex.Logplex{
+			Sink: logplex.LogfWriter(logf),
+			Split: func(line []byte) (string, []byte) {
+				key, msg, hasMagicSep := bytes.Cut(line, []byte(magicSep))
+				if !hasMagicSep {
+					return "", line
+				}
+				return string(key), msg
+			},
+		}
+
 		binDir, err := fetchBinary(ctx, p.version())
 		if err != nil {
 			return err
@@ -61,17 +72,6 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		p.port = randomPort()
 
 		const magicSep = " ::pqx:: "
-
-		p.out = &logplex.Logplex{
-			Sink: logplex.LogfWriter(logf),
-			Split: func(line []byte) (string, []byte) {
-				key, msg, hasMagicSep := bytes.Cut(line, []byte(magicSep))
-				if !hasMagicSep {
-					return "", line
-				}
-				return string(key), msg
-			},
-		}
 
 		cmd := exec.CommandContext(ctx, binDir+"/postgres",
 			// env
