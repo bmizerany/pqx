@@ -2,7 +2,10 @@ package logplex
 
 import (
 	"bytes"
+	"fmt"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"kr.dev/diff"
@@ -77,4 +80,34 @@ func TestLogplex(t *testing.T) {
 	diff.Test(t, t.Errorf, d1.String(), "one\nab\n")
 	diff.Test(t, t.Errorf, d2.String(), "two\n")
 	diff.Test(t, t.Errorf, d3.String(), "3\n")
+}
+
+// run with -race
+func TestConcurrency(t *testing.T) {
+	var (
+		d0 strings.Builder
+		d1 strings.Builder
+		d2 strings.Builder
+	)
+
+	lp := &Logplex{
+		Sink: &d0,
+	}
+	lp.Watch("d1", &d1)
+	lp.Watch("d2", &d2)
+
+	const seq = "abcdefghijklmnopqrstuvwxyz"
+	var g sync.WaitGroup
+	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
+		i := i
+		g.Add(1)
+		go func() {
+			defer g.Done()
+			for _, c := range seq {
+				fmt.Fprintf(lp, "d%d::%c\n", i, c)
+			}
+		}()
+	}
+
+	g.Wait()
 }

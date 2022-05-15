@@ -32,13 +32,16 @@ var newline = []byte{'\n'}
 // Write writes p to the underlying buffer and flushes each newline to their
 // corresponding sinks.
 func (lp *Logplex) Write(p []byte) (int, error) {
+	lp.mu.Lock()
+	defer lp.mu.Unlock()
+
 	p0 := p
 	for {
 		before, after, hasNewline := bytes.Cut(p, newline)
 		lp.lineBuf.Write(before)
 		if hasNewline {
 			lp.lineBuf.Write(newline)
-			if err := lp.Flush(); err != nil {
+			if err := lp.flushLocked(); err != nil {
 				return 0, err
 			}
 			p = after
@@ -48,19 +51,8 @@ func (lp *Logplex) Write(p []byte) (int, error) {
 	}
 }
 
-func (lp *Logplex) Detach(prefix string) {
-	lp.mu.Lock()
-	defer lp.mu.Unlock()
-	delete(lp.sinks, prefix)
-}
-
-// Flush flushes the any underlying buffered contents to any corresponding sink.
-//
-// The contents flushed may not be a complete line, or have enough data to
-// determine the proper sink and instead send to Sink.
-//
-// Flush should only be called when no more data will be written to Write.
-func (lp *Logplex) Flush() error {
+// caller must hold mu
+func (lp *Logplex) flushLocked() error {
 	defer lp.lineBuf.Reset()
 
 	// There is only one line in the buffer. Check the prefix and send to
@@ -80,6 +72,24 @@ func (lp *Logplex) Flush() error {
 	}
 	_, err = lp.Sink.Write(lp.lineBuf.Bytes())
 	return err
+}
+
+func (lp *Logplex) Detach(prefix string) {
+	lp.mu.Lock()
+	defer lp.mu.Unlock()
+	delete(lp.sinks, prefix)
+}
+
+// Flush flushes the any underlying buffered contents to any corresponding sink.
+//
+// The contents flushed may not be a complete line, or have enough data to
+// determine the proper sink and instead send to Sink.
+//
+// Flush should only be called when no more data will be written to Write.
+func (lp *Logplex) Flush() error {
+	lp.mu.Lock()
+	defer lp.mu.Unlock()
+	return lp.flushLocked()
 }
 
 func (lp *Logplex) sendLine(line []byte) (sent bool, err error) {
