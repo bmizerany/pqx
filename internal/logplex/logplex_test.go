@@ -3,6 +3,7 @@ package logplex
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"runtime"
 	"strings"
 	"sync"
@@ -108,4 +109,36 @@ func TestConcurrency(t *testing.T) {
 	}
 
 	g.Wait()
+}
+
+func TestWriteAllocs(t *testing.T) {
+	lp := &Logplex{
+		Sink:  io.Discard,
+		Split: testSplitter,
+	}
+	lp.Watch("a", io.Discard)
+
+	line := []byte("a::b\n")
+	got := testing.AllocsPerRun(100, func() {
+		lp.Write(line) //nolint
+	})
+
+	if got > 0 {
+		t.Errorf("got %f allocs, want 0", got)
+	}
+}
+
+func BenchmarkWrite(b *testing.B) {
+	b.ReportAllocs()
+
+	lp := &Logplex{
+		Sink:  io.Discard,
+		Split: testSplitter,
+	}
+	lp.Watch("a", io.Discard)
+
+	line := []byte("a::b\n")
+	for i := 0; i < b.N; i++ {
+		lp.Write(line) //nolint
+	}
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"unicode"
 )
@@ -98,15 +97,11 @@ func (lp *Logplex) Flush() error {
 
 // caller must hold mu
 func (lp *Logplex) sendLine(line []byte) (sent bool, err error) {
-	log.Printf("line: %q", line)
-	log.Printf("lastSeen: %q", lp.lastSeen)
 	key, message := lp.Split(line)
 	if isContinuation(message) {
 		key = lp.lastSeen
-		log.Printf("%q: continuation line for %q", message, key)
 	}
 	for prefix, w := range lp.sinks {
-		log.Printf("prefix = %q, key = %q", prefix, key)
 		if string(key) == prefix {
 			lp.lastSeen = append(lp.lastSeen[:0], key...)
 			_, err := w.Write(message)
