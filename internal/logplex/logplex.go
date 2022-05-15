@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 	"unicode"
 )
@@ -12,13 +13,13 @@ type Logplex struct {
 	Sink io.Writer
 
 	// if nil, all lines go to Drain
-	Split func(line []byte) (key string, message []byte)
+	Split func(line []byte) (key, message []byte)
 
 	lineBuf bytes.Buffer
 
 	mu       sync.Mutex
 	sinks    map[string]io.Writer
-	lastSeen string
+	lastSeen []byte
 }
 
 func (lp *Logplex) Watch(prefix string, w io.Writer) {
@@ -97,13 +98,17 @@ func (lp *Logplex) Flush() error {
 
 // caller must hold mu
 func (lp *Logplex) sendLine(line []byte) (sent bool, err error) {
+	log.Printf("line: %q", line)
+	log.Printf("lastSeen: %q", lp.lastSeen)
 	key, message := lp.Split(line)
 	if isContinuation(message) {
 		key = lp.lastSeen
+		log.Printf("%q: continuation line for %q", message, key)
 	}
-	lp.lastSeen = key
 	for prefix, w := range lp.sinks {
-		if key == prefix {
+		log.Printf("prefix = %q, key = %q", prefix, key)
+		if string(key) == prefix {
+			lp.lastSeen = append(lp.lastSeen[:0], key...)
 			_, err := w.Write(message)
 			return true, err
 		}

@@ -11,14 +11,12 @@ import (
 	"kr.dev/diff"
 )
 
-func newTestSplitter() func(line []byte) (key string, msg []byte) {
-	return func(line []byte) (key string, msg []byte) {
-		before, after, hasSep := bytes.Cut(line, []byte("::"))
-		if hasSep {
-			return string(before), after
-		}
-		return "", line
+func testSplitter(line []byte) (key, msg []byte) {
+	key, msg, hasSep := bytes.Cut(line, []byte("::"))
+	if hasSep {
+		return key, msg
 	}
+	return nil, line
 }
 
 func TestLogplex(t *testing.T) {
@@ -31,7 +29,7 @@ func TestLogplex(t *testing.T) {
 
 	lp := &Logplex{
 		Sink:  &d0,
-		Split: newTestSplitter(),
+		Split: testSplitter,
 	}
 
 	write := func(s string) {
