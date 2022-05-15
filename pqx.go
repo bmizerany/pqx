@@ -51,12 +51,12 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 
 		p.out = &logplex.Logplex{
 			Sink: logplex.LogfWriter(logf),
-			Split: func(line []byte) (string, []byte) {
-				key, msg, hasMagicSep := bytes.Cut(line, []byte(magicSep))
-				if !hasMagicSep {
-					return "", line
+			Split: func(line []byte) (key, message []byte) {
+				key, message, hasMagicSep := bytes.Cut(line, []byte(magicSep))
+				if hasMagicSep {
+					return key, message
 				}
-				return string(key), msg
+				return nil, line
 			},
 		}
 

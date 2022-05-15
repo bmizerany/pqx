@@ -3,6 +3,7 @@ package logplex
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"runtime"
 	"strings"
 	"sync"
@@ -11,14 +12,12 @@ import (
 	"kr.dev/diff"
 )
 
-func newTestSplitter() func(line []byte) (key string, msg []byte) {
-	return func(line []byte) (key string, msg []byte) {
-		before, after, hasSep := bytes.Cut(line, []byte("::"))
-		if hasSep {
-			return string(before), after
-		}
-		return "", line
+func testSplitter(line []byte) (key, msg []byte) {
+	key, msg, hasSep := bytes.Cut(line, []byte("::"))
+	if hasSep {
+		return key, msg
 	}
+	return nil, line
 }
 
 func TestLogplex(t *testing.T) {
@@ -31,7 +30,7 @@ func TestLogplex(t *testing.T) {
 
 	lp := &Logplex{
 		Sink:  &d0,
-		Split: newTestSplitter(),
+		Split: testSplitter,
 	}
 
 	write := func(s string) {
@@ -110,4 +109,36 @@ func TestConcurrency(t *testing.T) {
 	}
 
 	g.Wait()
+}
+
+func TestWriteAllocs(t *testing.T) {
+	lp := &Logplex{
+		Sink:  io.Discard,
+		Split: testSplitter,
+	}
+	lp.Watch("a", io.Discard)
+
+	line := []byte("a::b\n")
+	got := testing.AllocsPerRun(100, func() {
+		lp.Write(line) //nolint
+	})
+
+	if got > 0 {
+		t.Errorf("got %f allocs, want 0", got)
+	}
+}
+
+func BenchmarkWrite(b *testing.B) {
+	b.ReportAllocs()
+
+	lp := &Logplex{
+		Sink:  io.Discard,
+		Split: testSplitter,
+	}
+	lp.Watch("a", io.Discard)
+
+	line := []byte("a::b\n")
+	for i := 0; i < b.N; i++ {
+		lp.Write(line) //nolint
+	}
 }

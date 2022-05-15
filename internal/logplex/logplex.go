@@ -12,13 +12,13 @@ type Logplex struct {
 	Sink io.Writer
 
 	// if nil, all lines go to Drain
-	Split func(line []byte) (key string, message []byte)
+	Split func(line []byte) (key, message []byte)
 
 	lineBuf bytes.Buffer
 
 	mu       sync.Mutex
 	sinks    map[string]io.Writer
-	lastSeen string
+	lastSeen []byte
 }
 
 func (lp *Logplex) Watch(prefix string, w io.Writer) {
@@ -101,9 +101,9 @@ func (lp *Logplex) sendLine(line []byte) (sent bool, err error) {
 	if isContinuation(message) {
 		key = lp.lastSeen
 	}
-	lp.lastSeen = key
 	for prefix, w := range lp.sinks {
-		if key == prefix {
+		if string(key) == prefix {
+			lp.lastSeen = append(lp.lastSeen[:0], key...)
 			_, err := w.Write(message)
 			return true, err
 		}
