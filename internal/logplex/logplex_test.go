@@ -70,7 +70,7 @@ func TestLogplex(t *testing.T) {
 
 	lp.Watch("d3", &d3) // late watch
 	write("d3:")        // split seperator
-	write(":3\n")
+	write(":3\n\tcontinuation\n")
 
 	// detach d1 so it goes to Sink
 	lp.Unwatch("d1")
@@ -79,7 +79,7 @@ func TestLogplex(t *testing.T) {
 	diff.Test(t, t.Errorf, d0.String(), "zero\nd0::zero\nd3::three\nd1::detached\n") // captures d3 logs until Watch("d3", ...)
 	diff.Test(t, t.Errorf, d1.String(), "one\nab\n")
 	diff.Test(t, t.Errorf, d2.String(), "two\n")
-	diff.Test(t, t.Errorf, d3.String(), "3\n")
+	diff.Test(t, t.Errorf, d3.String(), "3\n\tcontinuation\n")
 }
 
 // run with -race
