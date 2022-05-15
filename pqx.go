@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"blake.io/pqx/internal/logplex"
+	"golang.org/x/sync/errgroup"
 	"tailscale.com/logtail/backoff"
 )
 
@@ -33,6 +34,7 @@ type Postgres struct {
 	port      string
 	shutdown  func() error
 	out       *logplex.Logplex
+	dropg     errgroup.Group
 }
 
 func (p *Postgres) version() string {
@@ -130,6 +132,11 @@ func (p *Postgres) Flush() {
 
 func (p *Postgres) Shutdown() error {
 	defer p.Flush()
+	if err := p.dropg.Wait(); err != nil {
+		// always shutdown; but ignore error
+		p.shutdown() //nolint
+		return err
+	}
 	if p.shutdown != nil {
 		return p.shutdown()
 	}
@@ -163,6 +170,7 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 
 	cleanup = func() {
 		db.Close()
+		p.dropDB(ctx, dbname)
 
 		// flush any logs we have on hand, we may not get them all, but
 		// at this point we'll only miss sessions disconnecting, etc.
@@ -179,6 +187,13 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 		}
 	}
 	return db, cleanup, nil
+}
+
+func (p *Postgres) dropDB(ctx context.Context, name string) {
+	p.dropg.Go(func() error {
+		_, err := p.db.ExecContext(ctx, "DROP DATABASE "+name)
+		return err
+	})
 }
 
 // initdb creates a new postgres database using the initdb command and returns
