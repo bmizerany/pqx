@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -20,6 +19,7 @@ import (
 	"time"
 	"unicode"
 
+	"blake.io/pqx/internal/logplex"
 	"tailscale.com/logtail/backoff"
 )
 
@@ -30,14 +30,11 @@ type Postgres struct {
 	Dir     string
 
 	startOnce sync.Once
-	cmd       *exec.Cmd
 	err       error
 	db        *sql.DB
 	port      string
 	shutdown  func() error
-	mainlog   bytes.Buffer
-
-	logs sync.Map
+	out       *logplex.Logplex
 }
 
 const magicSep = " :PQX_MAGIC_SEP: "
@@ -63,41 +60,6 @@ func parseLogLine(line string) (ll logLine, ok bool) {
 	return ll, true
 }
 
-func (p *Postgres) logf(msg string, args ...any) {
-	// TODO(bmizerany): wrap below debug log in flag to avoid commenting/uncommenting
-	// log.Printf("DEBUG: "+msg, args...)
-
-	ll, ok := parseLogLine(msg)
-	if !ok {
-		fmt.Fprintf(&p.mainlog, msg, args...)
-		return
-	}
-
-	// The ("*lastseen*") key is owned by this function.
-	//
-	// NOTE: This is hacky, but works nicely and avoids the need for a special mutex just for this value.
-	// Also note: The '*' is an invalid dbname, so we avoid the unlikely
-	// collision with a user table named the same as our lastseen key.
-	const lastSeenKey = "*lastseen*"
-
-	if ll.cont {
-		lastSeen, ok := p.logs.Load(lastSeenKey)
-		log.Printf("continuing log line (%v): %s", lastSeen, msg)
-		if ok {
-			ll.dbname = lastSeen.(string)
-		}
-	}
-	p.logs.Store(lastSeenKey, ll.dbname)
-
-	v, ok := p.logs.Load(ll.dbname)
-	if !ok {
-		fmt.Fprint(&p.mainlog, ll.msg)
-		return
-	}
-
-	v.(func(string, ...any))("[postgres]: " + ll.msg)
-}
-
 func (p *Postgres) version() string {
 	if p.Version != "" {
 		return p.Version
@@ -116,13 +78,27 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		// wrong; assuming the use of a an automatic t.Run with a known
 		// test name will suffice (i.e. TestThing/initdb)
 		// TODO(bmizerany): reuse data dir if exists
-		dataDir, err := initdb(ctx, p.logf, binDir, p.Dir)
+		dataDir, err := initdb(ctx, p.out, binDir, p.Dir)
 		if err != nil {
 			return err
 		}
 
 		p.port = randomPort()
-		p.cmd = exec.CommandContext(ctx, binDir+"/postgres",
+
+		const magicSep = " ::pqx:: "
+
+		p.out = &logplex.Logplex{
+			Sink: &logfWriter{logf},
+			Split: func(line []byte) (string, []byte) {
+				key, msg, found := bytes.Cut(line, []byte(magicSep))
+				if !found {
+					return "", line
+				}
+				return string(key), msg
+			},
+		}
+
+		cmd := exec.CommandContext(ctx, binDir+"/postgres",
 			// env
 			"-d", "2",
 			"-D", dataDir,
@@ -138,9 +114,9 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 			"-c", "log_line_prefix=%d"+magicSep,
 		)
 
-		p.cmd.Stdout = &lineWriter{logf: p.logf}
-		p.cmd.Stderr = &lineWriter{logf: p.logf}
-		if err := p.cmd.Start(); err != nil {
+		cmd.Stdout = p.out
+		cmd.Stderr = p.out
+		if err := cmd.Start(); err != nil {
 			return err
 		}
 		defer p.Flush()
@@ -152,35 +128,27 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		p.db = db
 		p.shutdown = func() error {
 			db.Close()
-			if err := p.cmd.Process.Signal(syscall.SIGQUIT); err != nil {
+			if err := cmd.Process.Signal(syscall.SIGQUIT); err != nil {
 				return err
 			}
-			if err := p.cmd.Wait(); err != nil {
+			if err := cmd.Wait(); err != nil {
 				return err
 			}
 			return nil
 		}
 
 		p.Flush() // flush any interesting/helpful logs before we start pinging
-		return pingUntilUp(ctx, p.logf, p.db)
+		return pingUntilUp(ctx, logfFromWriter(p.out), p.db)
 	}
 	p.startOnce.Do(func() {
 		p.err = do()
 	})
 
-	if p.err != nil {
-		logf("pqx: failed to start: %v", p.err)
-		logf("pqx: postgres start logs:")
-		p.writeMainLogs(logf)
-	}
 	return p.err
 }
 
 func (p *Postgres) Flush() {
-	if p.cmd == nil {
-		return
-	}
-	flushLogs(p.cmd)
+	p.out.Flush()
 }
 
 func (p *Postgres) Shutdown() error {
@@ -189,11 +157,6 @@ func (p *Postgres) Shutdown() error {
 		return p.shutdown()
 	}
 	return nil
-}
-
-func (p *Postgres) writeMainLogs(logf func(string, ...any)) {
-	lw := &lineWriter{logf: logf}
-	io.Copy(lw, bytes.NewReader(p.mainlog.Bytes())) //nolint
 }
 
 // Open creates a database for the schema, connects to it, and returns the
@@ -206,13 +169,12 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 	name = cleanName(name)
 	dbname := fmt.Sprintf("%s_%s", name, randomString())
 
-	p.logs.Store(dbname, logf)
 	defer p.Flush()
 
 	q := fmt.Sprintf("CREATE DATABASE %s", dbname)
 	_, err = p.db.ExecContext(ctx, q)
 	if err != nil {
-		p.writeMainLogs(logf)
+		p.Flush()
 		return nil, nil, err
 	}
 
@@ -228,11 +190,6 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 		// at this point we'll only miss sessions disconnecting, etc.
 		// TODO(bmizerany): wait for sentinal log line before proceeding after Flush?
 		p.Flush()
-
-		// Loggers
-		// don't write them to logf because logf to avoid races with
-		// underlying implementations... make better words here.
-		p.logs.Delete(dbname)
 	}
 
 	if schema != "" {
@@ -247,7 +204,7 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 
 // initdb creates a new postgres database using the initdb command and returns
 // the directory it was created in, or an error if any.
-func initdb(ctx context.Context, logf func(string, ...any), binDir, rootDir string) (dir string, err error) {
+func initdb(ctx context.Context, out io.Writer, binDir, rootDir string) (dir string, err error) {
 	dataDir, err := filepath.Abs(filepath.Join(rootDir, "data"))
 	if err != nil {
 		return "", err
@@ -257,9 +214,8 @@ func initdb(ctx context.Context, logf func(string, ...any), binDir, rootDir stri
 	}
 
 	cmd := exec.CommandContext(ctx, path.Join(binDir, "initdb"), dataDir)
-	cmd.Stdout = &lineWriter{logf: logf}
-	cmd.Stderr = &lineWriter{logf: logf}
-	defer flushLogs(cmd)
+	cmd.Stdout = out
+	cmd.Stderr = out
 	if err := cmd.Run(); err != nil {
 		return "", err
 	}
@@ -325,4 +281,19 @@ func cleanName(name string) string {
 		}
 	}
 	return strings.ToLower(string(rr))
+}
+
+func logfFromWriter(w io.Writer) func(string, ...any) {
+	return func(format string, args ...any) {
+		fmt.Fprintf(w, format, args...)
+	}
+}
+
+type logfWriter struct {
+	logf func(string, ...any)
+}
+
+func (w *logfWriter) Write(p []byte) (int, error) {
+	w.logf(string(p))
+	return len(p), nil
 }
