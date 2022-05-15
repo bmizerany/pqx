@@ -21,34 +21,41 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	start := func() {
-		sharedPG = &pqx.Postgres{
-			Version: os.Getenv("PQX_PG_VERSION"),
-			Dir:     getSharedDir(),
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		startLog := new(bytes.Buffer)
-		if err := sharedPG.Start(ctx, logplex.LogfFromWriter(startLog)); err != nil {
-			if _, err := startLog.WriteTo(os.Stderr); err != nil {
-				panic(err)
-			}
-			log.Fatal(err)
-		}
-		// free buffer
-		startLog = nil
-	}
-
-	start()
-	defer sharedPG.Shutdown() //nolint
-
+	Start(5 * time.Second)
+	defer Shutdown() //nolint
 	code := m.Run()
-	if err := sharedPG.Shutdown(); err != nil {
-		log.Fatal(err)
-	}
+	Shutdown()
 	os.Exit(code)
+}
+
+func Start(timeout time.Duration) {
+	sharedPG = &pqx.Postgres{
+		Version: os.Getenv("PQX_PG_VERSION"),
+		Dir:     getSharedDir(),
+	}
+
+	// TODO: pre-fetch binary before start to maintain short timeout (take a fetchTimeout?)
+	// TODO: move fetch to own package to make it easier to fetch here
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	startLog := new(bytes.Buffer)
+	if err := sharedPG.Start(ctx, logplex.LogfFromWriter(startLog)); err != nil {
+		if _, err := startLog.WriteTo(os.Stderr); err != nil {
+			log.Fatalf("error writing start log: %v", err)
+		}
+		log.Fatalf("error starting Postgres: %v", err)
+	}
+}
+
+func Shutdown() {
+	if sharedPG == nil {
+		return
+	}
+	if err := sharedPG.Shutdown(); err != nil {
+		log.Printf("error shutting down Postgres: %v", err)
+	}
 }
 
 func CreateDB(t *testing.T, schema string) *sql.DB {
