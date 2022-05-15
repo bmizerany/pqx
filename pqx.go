@@ -88,7 +88,6 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 			// logs
 			"-c", "log_line_prefix=%d"+magicSep,
 		)
-
 		cmd.Stdout = p.out
 		cmd.Stderr = p.out
 		if err := cmd.Start(); err != nil {
@@ -113,7 +112,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		}
 
 		p.Flush() // flush any interesting/helpful logs before we start pinging
-		return pingUntilUp(ctx, logplex.LogfFromWriter(p.out), p.db)
+		return pingUntilUp(ctx, logf, p.db)
 	}
 	p.startOnce.Do(func() {
 		p.err = do()
