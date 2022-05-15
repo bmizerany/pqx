@@ -25,7 +25,9 @@ func TestMain(m *testing.M) {
 	}
 	// TODO(bmizerany): timeout ctx?
 	if err := defaultPG.Start(context.Background(), logplex.LogfFromWriter(&startLog)); err != nil {
-		startLog.WriteTo(os.Stderr)
+		if _, err := startLog.WriteTo(os.Stderr); err != nil {
+			panic(err)
+		}
 		log.Fatal(err)
 	}
 	defer defaultPG.Shutdown() //nolint
