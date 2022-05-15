@@ -1,66 +1,68 @@
 package pqxtest
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+	"unicode"
 
 	"blake.io/pqx"
+	"blake.io/pqx/internal/logplex"
 )
 
-var defaultPG *pqx.Postgres
+var (
+	testPG *pqx.Postgres
+)
 
 func TestMain(m *testing.M) {
-	defaultPG = &pqx.Postgres{
+	testPG = &pqx.Postgres{
 		Version: os.Getenv("PQX_PG_VERSION"),
 		Dir:     getSharedDir(),
 	}
-	// TODO(bmizerany): timeout ctx?
-	if err := defaultPG.Start(context.Background(), log.Printf); err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	startLog := new(bytes.Buffer)
+	if err := testPG.Start(ctx, logplex.LogfFromWriter(startLog)); err != nil {
+		if _, err := startLog.WriteTo(os.Stderr); err != nil {
+			panic(err)
+		}
 		log.Fatal(err)
 	}
-	defer defaultPG.Shutdown() //nolint
+	defer testPG.Shutdown() //nolint
+
+	// free buffer
+	startLog = nil
+
 	code := m.Run()
-	defaultPG.Shutdown() //nolint
+	if err := testPG.Shutdown(); err != nil {
+		log.Fatal(err)
+	}
 	os.Exit(code)
 }
 
 func CreateDB(t *testing.T, schema string) *sql.DB {
 	t.Helper()
-	if defaultPG == nil {
+	if testPG == nil {
 		t.Fatal("pqxtest.TestMain not called")
 	}
 	t.Cleanup(func() {
-		defaultPG.Flush()
+		testPG.Flush()
 	})
 
-	db, cleanup, err := defaultPG.CreateDB(context.Background(), t.Logf, t.Name(), schema)
+	name := cleanName(t.Name())
+	db, cleanup, err := testPG.CreateDB(context.Background(), t.Logf, name, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(cleanup)
-	return db
-}
-
-// Open returns a sql.DB for schema if any. If no db has been started for
-// schema, one will be started, connected to, and returned.
-func StartDB(t *testing.T, schema string) *sql.DB {
-	t.Helper()
-
-	p := &pqx.Postgres{
-		Dir: getSharedDir(),
-	}
-	t.Cleanup(func() { p.Shutdown() }) //nolint
-
-	db, cleanup, err := p.CreateDB(context.Background(), t.Logf, t.Name(), schema)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(cleanup)
-
 	return db
 }
 
@@ -70,4 +72,14 @@ func getSharedDir() string {
 		panic(err)
 	}
 	return filepath.Join(os.TempDir(), "pqx", cwd)
+}
+
+func cleanName(name string) string {
+	rr := []rune(name)
+	for i, r := range rr {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			rr[i] = '_'
+		}
+	}
+	return strings.ToLower(string(rr))
 }
