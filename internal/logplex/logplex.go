@@ -95,29 +95,11 @@ func (lp *Logplex) Flush() error {
 	return lp.flushLocked()
 }
 
-func (lp *Logplex) maybeWriteContinuation(line []byte) (sent bool, err error) {
-	if isContinuation(line) {
-		w := lp.sinks[lp.lastSeen]
-		if w == nil {
-			return false, nil
-		}
-		if _, err := w.Write(line); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-	return false, nil
-}
-
 // caller must hold mu
 func (lp *Logplex) sendLine(line []byte) (sent bool, err error) {
 	key, message := lp.Split(line)
-	sent, err = lp.maybeWriteContinuation(message)
-	if err != nil {
-		return false, err
-	}
-	if sent {
-		return true, nil
+	if isContinuation(message) {
+		key = lp.lastSeen
 	}
 	lp.lastSeen = key
 	for prefix, w := range lp.sinks {
