@@ -42,6 +42,7 @@ func (p *Postgres) version() string {
 	return DefaultVersion
 }
 
+// ctx only affects initdb and pingUntilUp; otherwise, the context is ignored.
 func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 	do := func() error {
 		const magicSep = " ::pqx:: "
@@ -66,6 +67,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		// wrong; assuming the use of a an automatic t.Run with a known
 		// test name will suffice (i.e. TestThing/initdb)
 		// TODO(bmizerany): reuse data dir if exists
+
 		dataDir, err := initdb(ctx, p.out, binDir, p.Dir)
 		if err != nil {
 			return err
@@ -73,7 +75,8 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 
 		p.port = randomPort()
 
-		cmd := exec.CommandContext(ctx, binDir+"/postgres",
+		// run with disconnectext ctx so postgres continues running in background
+		cmd := exec.CommandContext(context.Background(), binDir+"/postgres",
 			// env
 			"-d", "2",
 			"-D", dataDir,
