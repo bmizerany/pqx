@@ -30,7 +30,6 @@ func TestMain(m *testing.M) {
 	defer cancel()
 
 	startLog := new(bytes.Buffer)
-	log.Print("Starting pqxtest")
 	if err := testPG.Start(ctx, logplex.LogfFromWriter(startLog)); err != nil {
 		if _, err := startLog.WriteTo(os.Stderr); err != nil {
 			panic(err)
@@ -43,7 +42,6 @@ func TestMain(m *testing.M) {
 	startLog = nil
 
 	code := m.Run()
-	log.Print("Shutting down pqxtest")
 	if err := testPG.Shutdown(); err != nil {
 		log.Fatal(err)
 	}
