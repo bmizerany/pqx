@@ -31,6 +31,17 @@ func TestLogplex(t *testing.T) {
 		Split: newTestSplitter(),
 	}
 
+	write := func(s string) {
+		t.Helper()
+		n, err := lp.Write([]byte(s))
+		if err != nil {
+			t.Error(err)
+		}
+		if n != len(s) {
+			t.Errorf("wrote %d bytes, want %d", n, len(s))
+		}
+	}
+
 	lp.Write([]byte("nothing\n"))
 	diff.Test(t, t.Errorf, d0.String(), "nothing\n")
 	d0.Reset()
@@ -38,18 +49,27 @@ func TestLogplex(t *testing.T) {
 	lp.Watch("d1", &d1)
 	lp.Watch("d2", &d2)
 
-	lp.Write([]byte("zero\n"))
-	lp.Write([]byte("d0::zero\n")) // unknown prefix; sent to Drain
-	lp.Write([]byte("d1::one\n"))
-	lp.Write([]byte("d1::a"))
-	lp.Write([]byte("b\n"))
-	lp.Write([]byte("d2::t"))
-	lp.Write([]byte("wo\n"))
+	// unknowns sent to Sink
+	write("zero\n")
+	write("d0::zero\n") // unknown prefix; sent to Drain
 
-	lp.Write([]byte("d3::three\n")) // write d3 before Watch
-	lp.Watch("d3", &d3)
-	lp.Write([]byte("d3::3\n"))
+	// d1
+	write("d1::one\n")
+	write("d1::a")
+	write("b\n")
 
+	// d2
+	write("d2::t")
+	write("wo\n")
+
+	// d3
+	write("d3::three\n") // write d3 before Watch
+
+	lp.Watch("d3", &d3) // late watch
+	write("d3:")        // split seperator
+	write(":3\n")
+
+	// detach d1 so it goes to Sink
 	lp.Detach("d1")
 	lp.Write([]byte("d1::detached\n"))
 
