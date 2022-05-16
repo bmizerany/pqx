@@ -48,6 +48,8 @@ func (p *Postgres) version() string {
 	return DefaultVersion
 }
 
+func (p *Postgres) dataDir() string { return filepath.Join(p.Dir, p.version(), "data") }
+
 // ctx only affects initdb and pingUntilUp; otherwise, the context is ignored.
 func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 	do := func() error {
@@ -77,13 +79,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 			return err
 		}
 
-		// TODO: capture logs and report per test when something goes
-		// wrong; assuming the use of a an automatic t.Run with a known
-		// test name will suffice (i.e. TestThing/initdb)
-		// TODO(bmizerany): reuse data dir if exists
-
-		dataDir, err := initdb(ctx, p.out, binDir, p.Dir)
-		if err != nil {
+		if err := initdb(ctx, p.out, binDir, p.dataDir()); err != nil {
 			return err
 		}
 
@@ -94,7 +90,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		cmd := exec.CommandContext(context.Background(), binDir+"/postgres",
 			// env
 			"-d", strconv.Itoa(p.DebugLevel),
-			"-D", dataDir,
+			"-D", p.dataDir(),
 			"-p", p.port,
 
 			// resources
@@ -211,22 +207,14 @@ func (p *Postgres) dropDB(ctx context.Context, name string) {
 
 // initdb creates a new postgres database using the initdb command and returns
 // the directory it was created in, or an error if any.
-func initdb(ctx context.Context, out io.Writer, binDir, rootDir string) (dir string, err error) {
-	dataDir, err := filepath.Abs(filepath.Join(rootDir, "data"))
-	if err != nil {
-		return "", err
-	}
+func initdb(ctx context.Context, out io.Writer, binDir, dataDir string) error {
 	if isPostgresDir(dataDir) {
-		return dataDir, nil
+		return nil
 	}
-
 	cmd := exec.CommandContext(ctx, path.Join(binDir, "initdb"), dataDir)
 	cmd.Stdout = out
 	cmd.Stderr = out
-	if err := cmd.Run(); err != nil {
-		return "", err
-	}
-	return dataDir, nil
+	return cmd.Run()
 }
 
 // isPostgresDir return true iif dir exists, is a directory, and contains the
