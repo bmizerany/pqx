@@ -28,7 +28,7 @@ jobs: {
 			name: "Setup Go"
 			uses: "actions/setup-go@v2"
 			with: {
-				"go-version": "1.18.1"
+				"go-version": "1.18.2"
 			}
 		}, {
 			name: "Go Test"
