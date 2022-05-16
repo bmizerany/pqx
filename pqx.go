@@ -33,6 +33,7 @@ type Postgres struct {
 	err       error
 	db        *sql.DB
 	port      string
+	readyCtx  context.Context
 	shutdown  func() error
 	out       *logplex.Logplex
 	dropg     errgroup.Group
@@ -50,13 +51,21 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 	do := func() error {
 		const magicSep = " ::pqx:: "
 
+		var ready func()
+		p.readyCtx, ready = context.WithCancel(context.Background())
+
 		p.out = &logplex.Logplex{
 			Sink: logplex.LogfWriter(logf),
 			Split: func(line []byte) (key, message []byte) {
+				if bytes.Contains(line, []byte("database system is ready to accept connections")) {
+					ready() // signal pg is ready avoiding extra backoff sleeps in pingUntilUp
+				}
+
 				key, message, hasMagicSep := bytes.Cut(line, []byte(magicSep))
 				if hasMagicSep {
 					return key, message
 				}
+
 				return nil, line
 			},
 		}
@@ -118,7 +127,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		}
 
 		p.Flush() // flush any interesting/helpful logs before we start pinging
-		return pingUntilUp(ctx, logf, p.db)
+		return p.pingUntilUp(ctx, logf)
 	}
 	p.startOnce.Do(func() {
 		p.err = do()
@@ -234,15 +243,20 @@ func (p *Postgres) connStr(dbname string) string {
 
 // pingUntilUp pings the database until it's up; or the provided context is
 // canceled; whichever comes first.
-func pingUntilUp(ctx context.Context, logf func(string, ...any), db *sql.DB) error {
+func (p *Postgres) pingUntilUp(ctx context.Context, logf func(string, ...any)) error {
 	b := backoff.NewBackoff("ping", logf, 1*time.Second)
 	for {
-		err := db.PingContext(ctx)
+		select {
+		case <-p.readyCtx.Done():
+			return nil
+		default:
+		}
+		err := p.db.PingContext(ctx)
 		if err == nil {
 			return nil
 		}
 		logf("pqx: ping failed; retrying: %v", err)
-		b.BackOff(ctx, err)
+		b.BackOff(p.readyCtx, err)
 	}
 }
 
