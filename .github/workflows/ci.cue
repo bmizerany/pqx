@@ -9,6 +9,12 @@ jobs: {
 			name: "Checkout"
 			uses: "actions/checkout@v2"
 		}, {
+			name: "Setup Go"
+			uses: "actions/setup-go@v3"
+			with: {
+				"go-version": "1.18.2"
+			}
+		}, {
 			name: "Cache Go & Postgres"
 			uses: "actions/cache@v2"
 			with: {
@@ -23,12 +29,6 @@ jobs: {
 				"restore-keys": """
 					go-
 					"""
-			}
-		}, {
-			name: "Setup Go"
-			uses: "actions/setup-go@v2"
-			with: {
-				"go-version": "1.18.1"
 			}
 		}, {
 			name: "Go Test"
