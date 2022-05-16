@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"flag"
 	"log"
 	"os"
 	"path/filepath"
@@ -30,6 +31,11 @@ import (
 	"blake.io/pqx/internal/logplex"
 )
 
+// Flags
+var (
+	flagDebugLevel = flag.Int("pqxtest.d", 0, "postgres debug level (see `postgres -d`)")
+)
+
 var (
 	sharedPG *pqx.Postgres
 )
@@ -40,7 +46,7 @@ var (
 //
 // Users that need do more in their TestMain, can use it as a reference.
 func TestMain(m *testing.M) {
-	Start(5 * time.Second)
+	Start(5*time.Second, *flagDebugLevel)
 	defer Shutdown() //nolint
 	code := m.Run()
 	Shutdown()
@@ -53,10 +59,11 @@ func TestMain(m *testing.M) {
 //
 // The Postgres instance is started in a temoporary directory named after the
 // current working directory and reused across runs.
-func Start(timeout time.Duration) {
+func Start(timeout time.Duration, debugLevel int) {
 	sharedPG = &pqx.Postgres{
-		Version: os.Getenv("PQX_PG_VERSION"),
-		Dir:     getSharedDir(),
+		Version:    os.Getenv("PQX_PG_VERSION"),
+		Dir:        getSharedDir(),
+		DebugLevel: debugLevel,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
