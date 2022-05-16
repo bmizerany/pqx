@@ -29,6 +29,8 @@ type Postgres struct {
 	Version string // for a list of versions by OS, see: https://mvnrepository.com/artifact/io.zonky.test.postgres
 	Dir     string
 
+	DebugLevel int // passed to postgres using the ("-d") flag
+
 	startOnce sync.Once
 	err       error
 	db        *sql.DB
@@ -87,10 +89,11 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 
 		p.port = randomPort()
 
-		// run with disconnectext ctx so postgres continues running in background
+		// run with disconnected ctx so postgres continues running in
+		// background after the provided ctx is canceled
 		cmd := exec.CommandContext(context.Background(), binDir+"/postgres",
 			// env
-			"-d", "2",
+			"-d", strconv.Itoa(p.DebugLevel),
 			"-D", dataDir,
 			"-p", p.port,
 
