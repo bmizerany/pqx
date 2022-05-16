@@ -232,8 +232,8 @@ func (p *Postgres) DSN(dbname string) string {
 	return fmt.Sprintf("host=localhost port=%s dbname=%s sslmode=disable", p.port, dbname)
 }
 
-// pingUntilUp pings the database until it's up; or the provided context is
-// canceled; whichever comes first.
+// pingUntilUp pings the database until it's up; the provided context is
+// canceled; or p.readyContext is canceled, whichever comes first.
 func (p *Postgres) pingUntilUp(ctx context.Context, logf func(string, ...any)) error {
 	b := backoff.NewBackoff("ping", logf, 1*time.Second)
 	for {
