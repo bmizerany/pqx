@@ -12,7 +12,7 @@ jobs: {
 			name: "Setup Go"
 			uses: "actions/setup-go@v3"
 			with: {
-				"go-version-file": "go.mod"
+				"go-version": "go1.18.2"
 			}
 		}, {
 			name: "Cache Go & Postgres"
