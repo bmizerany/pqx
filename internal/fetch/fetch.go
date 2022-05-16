@@ -1,4 +1,4 @@
-package pqx
+package fetch
 
 import (
 	"archive/tar"
@@ -20,7 +20,7 @@ import (
 
 var envCacheDir = os.Getenv("PQX_BIN_DIR")
 
-func binaryURL(version string) string {
+func BinaryURL(version string) string {
 	const fetchURLTempl = "https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-$OS-$ARCH/$VERSION/embedded-postgres-binaries-$OS-$ARCH-$VERSION.jar"
 
 	// TODO(bmizerany): validate version
@@ -31,7 +31,7 @@ func binaryURL(version string) string {
 	).Replace(fetchURLTempl)
 }
 
-func fetchBinary(ctx context.Context, version string) (binDir string, err error) {
+func Binary(ctx context.Context, version string) (binDir string, err error) {
 	defer errorfmt.Handlef("fetchBinary: %w", &err)
 
 	cacheDir := envCacheDir
@@ -60,7 +60,7 @@ func fetchBinary(ctx context.Context, version string) (binDir string, err error)
 		return binDir, nil
 	}
 
-	binURL := binaryURL(version)
+	binURL := BinaryURL(version)
 	defer errorfmt.Handlef("%s: %w", binURL, &err)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", binURL, nil)

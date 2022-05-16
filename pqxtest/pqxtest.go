@@ -1,3 +1,17 @@
+// Package pqxtest provides functions for testing with a live, lightweight, standalone
+// Postgres instance optimized for fast setup/teardown and cleanup.
+//
+// Starting and creating a database:
+//
+//  func TestMain(m *testing.M) {
+//  	pqxtest.TestMain(m)
+//  }
+//
+//  func TestSomething(t *testing.T) {
+//  	db := pqxtest.CreateDB(t, "CREATE TABLE foo (id INT)")
+//  	// ... do something with db ...
+//  	// NOTE: db will be closed automatically when t.Cleanup is called and the database will be dropped.
+//  }
 package pqxtest
 
 import (
@@ -20,6 +34,11 @@ var (
 	sharedPG *pqx.Postgres
 )
 
+// TestMain is a convenience function for running tests with a live Postgres
+// instance. It starts the Postgres instance before calling m.Run, and then
+// calls Shutdown after.
+//
+// Users that need do more in their TestMain, can use it as a reference.
 func TestMain(m *testing.M) {
 	Start(5 * time.Second)
 	defer Shutdown() //nolint
@@ -28,14 +47,17 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// Start starts a Postgres instance. The version used is determined by the
+// PQX_PG_VERSION environment variable if set, otherwise pqx.DefaultVersion is
+// used.
+//
+// The Postgres instance is started in a temoporary directory named after the
+// current working directory and reused across runs.
 func Start(timeout time.Duration) {
 	sharedPG = &pqx.Postgres{
 		Version: os.Getenv("PQX_PG_VERSION"),
 		Dir:     getSharedDir(),
 	}
-
-	// TODO: pre-fetch binary before start to maintain short timeout (take a fetchTimeout?)
-	// TODO: move fetch to own package to make it easier to fetch here
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -49,6 +71,7 @@ func Start(timeout time.Duration) {
 	}
 }
 
+// Shutdown shuts down the shared Postgres instance.
 func Shutdown() {
 	if sharedPG == nil {
 		return
@@ -58,6 +81,10 @@ func Shutdown() {
 	}
 }
 
+// CreateDB creates and returns a database using the shared Postgres instance.
+// The database will automatically be cleaned up just before the test ends.
+//
+// All logs associated with the database will be written to t.Logf.
 func CreateDB(t *testing.T, schema string) *sql.DB {
 	t.Helper()
 	if sharedPG == nil {

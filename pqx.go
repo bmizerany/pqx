@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"blake.io/pqx/internal/fetch"
 	"blake.io/pqx/internal/logplex"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/logtail/backoff"
@@ -60,7 +61,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 			},
 		}
 
-		binDir, err := fetchBinary(ctx, p.version())
+		binDir, err := fetch.Binary(ctx, p.version())
 		if err != nil {
 			return err
 		}
