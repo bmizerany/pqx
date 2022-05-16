@@ -46,6 +46,7 @@ var (
 //
 // Users that need do more in their TestMain, can use it as a reference.
 func TestMain(m *testing.M) {
+	flag.Parse()
 	Start(5*time.Second, *flagDebugLevel)
 	defer Shutdown() //nolint
 	code := m.Run()
