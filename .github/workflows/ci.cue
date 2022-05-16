@@ -10,9 +10,9 @@ jobs: {
 			uses: "actions/checkout@v2"
 		}, {
 			name: "Setup Go"
-			uses: "actions/setup-go@v2"
+			uses: "actions/setup-go@v3"
 			with: {
-				"go-version": "1.18.2"
+				"go-version": "1.18"
 			}
 		}, {
 			name: "Cache Go & Postgres"
