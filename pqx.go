@@ -109,7 +109,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 		}
 		defer p.Flush()
 
-		db, err := sql.Open("postgres", p.connStr("postgres"))
+		db, err := sql.Open("postgres", p.DSN("postgres"))
 		if err != nil {
 			return err
 		}
@@ -172,7 +172,7 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 		return nil, nil, err
 	}
 
-	db, err = sql.Open("postgres", p.connStr(dbname))
+	db, err = sql.Open("postgres", p.DSN(dbname))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -228,7 +228,7 @@ func isPostgresDir(dir string) bool {
 	return err == nil
 }
 
-func (p *Postgres) connStr(dbname string) string {
+func (p *Postgres) DSN(dbname string) string {
 	return fmt.Sprintf("host=localhost port=%s dbname=%s sslmode=disable", p.port, dbname)
 }
 
