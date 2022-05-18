@@ -8,7 +8,6 @@ require (
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	kr.dev/diff v0.2.0
 	kr.dev/errorfmt v0.1.1
-	tailscale.com v1.24.2
 )
 
 require (

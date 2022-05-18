@@ -17,10 +17,10 @@ import (
 	"syscall"
 	"time"
 
+	"blake.io/pqx/internal/backoff"
 	"blake.io/pqx/internal/fetch"
 	"blake.io/pqx/internal/logplex"
 	"golang.org/x/sync/errgroup"
-	"tailscale.com/logtail/backoff"
 )
 
 const DefaultVersion = "14.2.0"
