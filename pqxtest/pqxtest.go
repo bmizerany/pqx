@@ -103,11 +103,14 @@ func CreateDB(t *testing.T, schema string) *sql.DB {
 	})
 
 	name := cleanName(t.Name())
-	db, cleanup, err := sharedPG.CreateDB(context.Background(), t.Logf, name, schema)
+	db, dsn, cleanup, err := sharedPG.CreateDB(context.Background(), t.Logf, name, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(cleanup)
+
+	t.Logf("[pqx]: psql '%s'", dsn)
+
 	return db
 }
 

@@ -154,12 +154,13 @@ func (p *Postgres) Shutdown() error {
 
 // Open creates a database for the schema, connects to it, and returns the
 // *sql.DB. .. more words needed here.
-func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name, schema string) (db *sql.DB, cleanup func(), err error) {
+func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name, schema string) (db *sql.DB, dsn string, cleanup func(), err error) {
 	if err := p.Start(ctx, logf); err != nil {
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 
 	dbname := fmt.Sprintf("%s_%s", name, randomString())
+	dsn = p.DSN(dbname)
 
 	defer p.Flush()
 
@@ -169,12 +170,12 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 	_, err = p.db.ExecContext(ctx, q)
 	if err != nil {
 		p.Flush()
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 
 	db, err = sql.Open("postgres", p.DSN(dbname))
 	if err != nil {
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 
 	cleanup = func() {
@@ -192,10 +193,10 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 		_, err = db.ExecContext(ctx, schema)
 		if err != nil {
 			cleanup()
-			return nil, nil, err
+			return nil, "", nil, err
 		}
 	}
-	return db, cleanup, nil
+	return db, dsn, cleanup, nil
 }
 
 func (p *Postgres) dropDB(ctx context.Context, name string) {
