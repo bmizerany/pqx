@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode"
@@ -39,6 +40,9 @@ var (
 
 var (
 	sharedPG *pqx.Postgres
+
+	dmu  sync.Mutex
+	dsns = map[testing.TB][]string{}
 )
 
 // TestMain is a convenience function for running tests with a live Postgres
@@ -108,9 +112,16 @@ func CreateDB(t testing.TB, schema string) *sql.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(cleanup)
+	t.Cleanup(func() {
+		cleanup()
+		dmu.Lock()
+		delete(dsns, t)
+		dmu.Unlock()
+	})
 
-	t.Logf("[pqx]: psql '%s'", dsn)
+	dmu.Lock()
+	dsns[t] = append(dsns[t], dsn)
+	dmu.Unlock()
 
 	return db
 }
@@ -122,19 +133,35 @@ func CreateDB(t testing.TB, schema string) *sql.DB {
 //
 //  func TestSomething(t *testing.T) {
 //  	db := pqxtest.CreateDB(t, "CREATE TABLE foo (id INT)")
-//	defer pqxtest.BreakForPSQL(t) // will run even in the face of t.Fatal/Fail.
+//	defer pqxtest.BlockForPSQL(t) // will run even in the face of t.Fatal/Fail.
 //  	// ... do something with db ...
 //  }
-func BreakForPSQL(t testing.TB) {
+func BlockForPSQL(t testing.TB) {
 	t.Helper()
+
+	logf := t.Logf
 	if !testing.Verbose() {
 		// Calling this function without -v means users will not see
 		// this message if we use t.Logf, and the tests will silently
 		// hang, which isn't ideal, so we ensure the users sees we're
 		// blocking.
-		fmt.Fprintf(os.Stderr, "%s is blocking for SQL", t.Name())
+		logf = func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, format+"\n", args...)
+		}
 	}
-	t.Logf("blocking for SQL")
+
+	dmu.Lock()
+	dsns := dsns[t]
+	dmu.Unlock()
+
+	if len(dsns) == 0 {
+		logf("[pqx]: BlockForPSQL: no databases to interact with")
+	}
+
+	for _, dsn := range dsns {
+		logf("blocking for SQL; press Ctrl-C to quit")
+		logf("[pqx]: psql '%s'", dsn)
+	}
 	select {}
 }
 
