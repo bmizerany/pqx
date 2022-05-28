@@ -19,10 +19,12 @@ import (
 	"context"
 	"database/sql"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode"
@@ -38,6 +40,9 @@ var (
 
 var (
 	sharedPG *pqx.Postgres
+
+	dmu  sync.Mutex
+	dsns = map[testing.TB][]string{}
 )
 
 // TestMain is a convenience function for running tests with a live Postgres
@@ -107,11 +112,58 @@ func CreateDB(t testing.TB, schema string) *sql.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(cleanup)
+	t.Cleanup(func() {
+		cleanup()
+		dmu.Lock()
+		delete(dsns, t)
+		dmu.Unlock()
+	})
 
-	t.Logf("[pqx]: psql '%s'", dsn)
+	dmu.Lock()
+	dsns[t] = append(dsns[t], dsn)
+	dmu.Unlock()
 
 	return db
+}
+
+// BreakForPSQL blocks the current goroutine allowing the user to interact with
+// the database(s) associated with t by prior calls to CreateDB.
+//
+// Example Usage:
+//
+//  func TestSomething(t *testing.T) {
+//  	db := pqxtest.CreateDB(t, "CREATE TABLE foo (id INT)")
+//	defer pqxtest.BlockForPSQL(t) // will run even in the face of t.Fatal/Fail.
+//  	// ... do something with db ...
+//  }
+func BlockForPSQL(t testing.TB) {
+	t.Helper()
+
+	logf := t.Logf
+	if !testing.Verbose() {
+		// Calling this function without -v means users will not see
+		// this message if we use t.Logf, and the tests will silently
+		// hang, which isn't ideal, so we ensure the users sees we're
+		// blocking.
+		logf = func(format string, args ...any) {
+			t.Helper()
+			fmt.Fprintf(os.Stderr, format+"\n", args...)
+		}
+	}
+
+	dmu.Lock()
+	dsns := dsns[t]
+	dmu.Unlock()
+
+	if len(dsns) == 0 {
+		logf("[pqx]: BlockForPSQL: no databases to interact with")
+	}
+
+	for _, dsn := range dsns {
+		logf("blocking for SQL; press Ctrl-C to quit")
+		logf("[pqx]: psql '%s'", dsn)
+	}
+	select {}
 }
 
 func getSharedDir() string {
