@@ -1,0 +1,1 @@
+Go docs are [here](https://pkg.go.dev/blake.io/pqx/pqxtest)
