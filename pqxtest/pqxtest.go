@@ -93,7 +93,7 @@ func Shutdown() {
 // The database will automatically be cleaned up just before the test ends.
 //
 // All logs associated with the database will be written to t.Logf.
-func CreateDB(t *testing.T, schema string) *sql.DB {
+func CreateDB(t testing.TB, schema string) *sql.DB {
 	t.Helper()
 	if sharedPG == nil {
 		t.Fatal("pqxtest.TestMain not called")
