@@ -1,5 +1,6 @@
-// Package pqxtest provides functions for testing with an "embeded" live, lightweight, standalone
-// Postgres instance optimized for fast setup/teardown and cleanup.
+// Package pqxtest provides functions for testing with an embedded live,
+// lightweight, standalone Postgres instance optimized for fast setup/teardown
+// and cleanup.
 //
 // Starting, creating a database, using the database, and shutting down can all
 // be done with:
@@ -18,9 +19,9 @@
 //
 // Pqxtest enables a developer to go from zero to well tested, production ready
 // code that interacts with a database in no time. This means removing much of
-// the toil assocaited with configuring and running a standalone postgres
+// the toil associated with configuring and running a standalone postgres
 // instance, the can be brittle is left standing across test runs,
-// overenginnering with abudent interfaces for mocking.
+// over engineering with abundant interfaces for mocking.
 //
 // Easy CI
 //
@@ -31,18 +32,18 @@
 // No Mocks
 //
 // Mocking database interactions is dangerous. It is easy to create a test that
-// gives false positives, or can cause develoers precious time hunting down a
+// gives false positives, or can cause developers precious time hunting down a
 // bug that doesn't exist because they're getting false negatives from the mocks
 // (i.e. the code would work if running against an actual database).
 //
-// Writting mocks and mocking code is almost always avoiable when interacting
-// with a live database. Try pqx and ditch you mocks libraries and all the
-// for-tests-only interfaces and use concrete types instead!
+// Writing mocks and mocking code is almost always avoidable when interacting
+// with a live database. Try pqxtest and ditch you mocking libraries and all
+// the for-tests-only interfaces and use concrete types instead!
 //
 // No global transaction
 //
-// Some test libaries create a single transaction for a test and return a
-// wrapper-driver *sql.DB that runs all queries in a test in that trasaction.
+// Some test libraries create a single transaction for a test and return a
+// wrapper-driver *sql.DB that runs all queries in a test in that transaction.
 // This is less than ideal because, like mocks, this isn't how applications work
 // in production, so  it can lead to weird behaviors and false positives. It
 // also means you can't use those nifty driver specific functions you love.
@@ -50,7 +51,7 @@
 //
 // Speed
 //
-// Pqx is fast. It is designed to give you all the benfits of writting tests
+// Pqx is fast. It is designed to give you all the benefits of writing tests
 // against a real database without slowing you down. That means no waiting for
 // setup and teardown after the first test run. The first "go test" takes only a
 // second or two to cache the standalone postgres binary and initialize the data
@@ -175,7 +176,7 @@ func TestMain(m *testing.M) {
 // PQX_PG_VERSION environment variable if set, otherwise pqx.DefaultVersion is
 // used.
 //
-// The Postgres instance is started in a temoporary directory named after the
+// The Postgres instance is started in a temporary directory named after the
 // current working directory and reused across runs.
 func Start(timeout time.Duration, debugLevel int) {
 	sharedPG = &pqx.Postgres{
@@ -238,8 +239,14 @@ func CreateDB(t testing.TB, schema string) *sql.DB {
 	return db
 }
 
-// BreakForPSQL blocks the current goroutine allowing the user to interact with
-// the database(s) associated with t by prior calls to CreateDB.
+// BlockForPSQL logs the psql commands for connecting to all databases created
+// by CreateDB in a test, and blocks the current goroutine allowing the user to
+// interact with the databases.
+//
+// As a special case, if testing.Verbose is false, it logs to stderr to avoid
+// silently hanging the tests.
+//
+// BreakForPSQL is intended for debugging only and not to be left in tests.
 //
 // Example Usage:
 //
