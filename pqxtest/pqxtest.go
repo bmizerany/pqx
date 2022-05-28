@@ -100,10 +100,8 @@
 //
 // PSQL
 //
-// Each call to CreateDB logs the psql command to connect and look around in the
-// database.
-//
-// TODO: implement and show how to use with BreakForPSQL()
+// Test databases can be accessed using the psql command line tool before they
+// exist. Use the BlockForPSQL function to accomplish this.
 //
 // No Config
 //
