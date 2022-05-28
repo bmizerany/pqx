@@ -19,6 +19,7 @@ import (
 	"context"
 	"database/sql"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -112,6 +113,29 @@ func CreateDB(t testing.TB, schema string) *sql.DB {
 	t.Logf("[pqx]: psql '%s'", dsn)
 
 	return db
+}
+
+// BreakForPSQL blocks the current goroutine allowing the user to interact with
+// the database(s) associated with t by prior calls to CreateDB.
+//
+// Example Usage:
+//
+//  func TestSomething(t *testing.T) {
+//  	db := pqxtest.CreateDB(t, "CREATE TABLE foo (id INT)")
+//	defer pqxtest.BreakForPSQL(t) // will run even in the face of t.Fatal/Fail.
+//  	// ... do something with db ...
+//  }
+func BreakForPSQL(t testing.TB) {
+	t.Helper()
+	if !testing.Verbose() {
+		// Calling this function without -v means users will not see
+		// this message if we use t.Logf, and the tests will silently
+		// hang, which isn't ideal, so we ensure the users sees we're
+		// blocking.
+		fmt.Fprintf(os.Stderr, "%s is blocking for SQL", t.Name())
+	}
+	t.Logf("blocking for SQL")
+	select {}
 }
 
 func getSharedDir() string {
