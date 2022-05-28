@@ -146,6 +146,7 @@ func BlockForPSQL(t testing.TB) {
 		// hang, which isn't ideal, so we ensure the users sees we're
 		// blocking.
 		logf = func(format string, args ...any) {
+			t.Helper()
 			fmt.Fprintf(os.Stderr, format+"\n", args...)
 		}
 	}
