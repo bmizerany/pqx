@@ -130,6 +130,7 @@ package pqxtest
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -221,6 +222,7 @@ func CreateDB(t testing.TB, schema string) *sql.DB {
 	})
 
 	name := cleanName(t.Name())
+	name = fmt.Sprintf("%s_%s", name, randomString())
 	db, dsn, cleanup, err := sharedPG.CreateDB(context.Background(), t.Logf, name, schema)
 	if err != nil {
 		t.Fatal(err)
@@ -301,4 +303,12 @@ func cleanName(name string) string {
 		}
 	}
 	return strings.ToLower(string(rr))
+}
+
+func randomString() string {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf("%x", buf)
 }

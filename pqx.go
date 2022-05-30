@@ -3,7 +3,6 @@ package pqx
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"io"
@@ -159,34 +158,33 @@ func (p *Postgres) CreateDB(ctx context.Context, logf func(string, ...any), name
 		return nil, "", nil, err
 	}
 
-	dbname := fmt.Sprintf("%s_%s", name, randomString())
-	dsn = p.DSN(dbname)
+	dsn = p.DSN(name)
 
 	defer p.Flush()
 
-	p.out.Watch(dbname, logplex.LogfWriter(logf))
+	p.out.Watch(name, logplex.LogfWriter(logf))
 
-	q := fmt.Sprintf("CREATE DATABASE %s", dbname)
+	q := fmt.Sprintf("CREATE DATABASE %s", name)
 	_, err = p.db.ExecContext(ctx, q)
 	if err != nil {
 		p.Flush()
 		return nil, "", nil, err
 	}
 
-	db, err = sql.Open("postgres", p.DSN(dbname))
+	db, err = sql.Open("postgres", p.DSN(name))
 	if err != nil {
 		return nil, "", nil, err
 	}
 
 	cleanup = func() {
 		db.Close()
-		p.dropDB(ctx, dbname)
+		p.dropDB(ctx, name)
 
 		// flush any logs we have on hand, we may not get them all, but
 		// at this point we'll only miss sessions disconnecting, etc.
 		// TODO(bmizerany): wait for sentinal log line before proceeding after Flush?
 		p.Flush()
-		p.out.Unwatch(dbname)
+		p.out.Unwatch(name)
 	}
 
 	if schema != "" {
@@ -259,12 +257,4 @@ func randomPort() string {
 	}
 	defer ln.Close()
 	return strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
-}
-
-func randomString() string {
-	var buf [8]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		panic(err)
-	}
-	return fmt.Sprintf("%x", buf)
 }
