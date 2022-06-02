@@ -239,6 +239,9 @@ func (p *Postgres) pingUntilUp(ctx context.Context, logf func(string, ...any)) e
 		select {
 		case <-p.readyCtx.Done():
 			return nil
+		case <-ctx.Done():
+			// oddly, p.db.PingContext isn't honoring the cotext it seems. Maybe a bug in lib/pq?
+			return ctx.Err()
 		default:
 		}
 		err := p.db.PingContext(ctx)
