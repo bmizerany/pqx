@@ -27,6 +27,7 @@ const DefaultVersion = "14.2.0"
 type Postgres struct {
 	Version string // for a list of versions by OS, see: https://mvnrepository.com/artifact/io.zonky.test.postgres
 	Dir     string
+	Port    int // The port to bind postgres too. If the value is zero, a random port is assigned.
 
 	DebugLevel int // passed to postgres using the ("-d") flag
 
@@ -82,7 +83,11 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 			return err
 		}
 
-		p.port = randomPort()
+		if p.Port == 0 {
+			p.port = randomPort()
+		} else {
+			p.port = strconv.Itoa(p.Port)
+		}
 
 		// run with disconnected ctx so postgres continues running in
 		// background after the provided ctx is canceled
