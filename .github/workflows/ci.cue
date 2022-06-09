@@ -22,6 +22,7 @@ jobs: {
 					~/.cache/go-build
 					~/.cache/pqx
 					~/go/pkg/mod
+					/tmp/pqx
 					"""
 				key: """
 					go-${{ hashFiles('**/go.sum') }}
