@@ -134,6 +134,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -189,7 +190,7 @@ func Start(timeout time.Duration, debugLevel int) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	startLog := new(bytes.Buffer)
+	startLog := new(lockedBuffer)
 	if err := sharedPG.Start(ctx, logplex.LogfFromWriter(startLog)); err != nil {
 		if _, err := startLog.WriteTo(os.Stderr); err != nil {
 			log.Fatalf("error writing start log: %v", err)
@@ -311,4 +312,21 @@ func randomString() string {
 		panic(err)
 	}
 	return fmt.Sprintf("%x", buf)
+}
+
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.Write(p)
+}
+
+func (b *lockedBuffer) WriteTo(w io.Writer) (int64, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.WriteTo(w)
 }
