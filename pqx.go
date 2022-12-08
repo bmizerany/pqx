@@ -33,10 +33,10 @@ type Postgres struct {
 
 	startOnce sync.Once
 	err       error
+	cmd       *exec.Cmd
 	db        *sql.DB
 	port      string
 	readyCtx  context.Context
-	shutdown  func() error
 	out       *logplex.Logplex
 	dropg     errgroup.Group
 }
@@ -118,16 +118,7 @@ func (p *Postgres) Start(ctx context.Context, logf func(string, ...any)) error {
 			return err
 		}
 		p.db = db
-		p.shutdown = func() error {
-			db.Close()
-			if err := cmd.Process.Signal(syscall.SIGQUIT); err != nil {
-				return err
-			}
-			if err := cmd.Wait(); err != nil {
-				return err
-			}
-			return nil
-		}
+		p.cmd = cmd
 
 		p.Flush() // flush any interesting/helpful logs before we start pinging
 		return p.pingUntilUp(ctx, logf)
@@ -143,15 +134,36 @@ func (p *Postgres) Flush() {
 	p.out.Flush()
 }
 
+// Shutdown waits for any inflight database cleanup functions to finish and
+// then shutsdown postgres.
 func (p *Postgres) Shutdown() error {
-	defer p.Flush()
-	if err := p.dropg.Wait(); err != nil {
-		// always shutdown; but ignore error
-		p.shutdown() //nolint
+	return p.shutdown(false)
+}
+
+// ShutdownAlone is like Shutdown, but it leaves postgres running.
+func (p *Postgres) ShutdownAlone() error {
+	return p.shutdown(true)
+}
+
+// Pid returns the pid of the postgres process. It is an error to call Pid
+// before Start.
+func (p *Postgres) Pid() int {
+	if p.cmd == nil {
+		panic("pqx: Pid called before Start")
+	}
+	return p.cmd.Process.Pid
+}
+
+func (p *Postgres) shutdown(alone bool) error {
+	p.db.Close()
+	if alone {
+		return nil
+	}
+	if err := p.cmd.Process.Signal(syscall.SIGQUIT); err != nil {
 		return err
 	}
-	if p.shutdown != nil {
-		return p.shutdown()
+	if err := p.cmd.Wait(); err != nil {
+		return err
 	}
 	return nil
 }

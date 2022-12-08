@@ -1,14 +1,48 @@
 package pqx_test
 
 import (
+	"bytes"
+	"database/sql"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
+	"time"
 
 	"blake.io/pqx/pqxtest"
 	_ "github.com/lib/pq"
 )
 
 func TestMain(m *testing.M) {
-	pqxtest.TestMain(m)
+	if os.Getenv("TESTING_ORPHAN") != "" {
+		flag.Parse()
+
+		// pqxtest bases the data directory off of the working
+		// directory, and we want to avoid conflicts with the parent
+		// process's postgres, so jump to a different directory before
+		// starting postgres with pqxtest as the child.
+		dir, err := os.MkdirTemp("", "pqxtest")
+		if err != nil {
+			panic(err)
+		}
+		_ = os.Chdir(dir)
+
+		os.Unsetenv("TESTING_ORPHAN")
+		pqxtest.Start(5*time.Second, 0)
+
+		// picked up by TestOrphan
+		fmt.Printf("dsn: %q\n", pqxtest.DSN())
+
+		go func() {
+			panic("intentional panic")
+		}()
+		select {} // panic will kill us
+	} else {
+		pqxtest.TestMain(m)
+	}
 }
 
 func TestStart(t *testing.T) {
@@ -35,4 +69,48 @@ func TestSubTestNames(t *testing.T) {
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) { pqxtest.CreateDB(t, "") })
 	}
+}
+
+func TestOrphan(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=none")
+	cmd.Env = append(os.Environ(), "TESTING_ORPHAN=1")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	t.Logf("output: \n%s", out)
+	if !strings.Contains(string(out), "intentional panic") {
+		t.Fatalf("expected panic")
+	}
+	r := bytes.NewReader(out)
+	dsn := scanString(t, r, "dsn: %q\n")
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	for {
+		if err := db.Ping(); err == nil {
+			t.Logf("ping failed: %v", err)
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		break
+	}
+
+}
+
+func scanString(t *testing.T, r io.Reader, format string) string {
+	t.Helper()
+	var s string
+	_, err := fmt.Fscanf(r, format, &s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
 }

@@ -5,17 +5,17 @@
 // Starting, creating a database, using the database, and shutting down can all
 // be done with:
 //
-//  func TestMain(m *testing.M) {
-//  	pqxtest.TestMain(m)
-//  }
+//	func TestMain(m *testing.M) {
+//		pqxtest.TestMain(m)
+//	}
 //
-//  func TestSomething(t *testing.T) {
-//  	db := pqxtest.CreateDB(t, "CREATE TABLE foo (id INT)")
-//  	// ... do something with db ...
-//  	// NOTE: db will be closed automatically when t.Cleanup is called and the database will be dropped.
-//  }
+//	func TestSomething(t *testing.T) {
+//		db := pqxtest.CreateDB(t, "CREATE TABLE foo (id INT)")
+//		// ... do something with db ...
+//		// NOTE: db will be closed automatically when t.Cleanup is called and the database will be dropped.
+//	}
 //
-// Developer Speed
+// # Developer Speed
 //
 // Pqxtest enables a developer to go from zero to well tested, production ready
 // code that interacts with a database in no time. This means removing much of
@@ -23,13 +23,13 @@
 // instance, the can be brittle is left standing across test runs,
 // over engineering with abundant interfaces for mocking.
 //
-// Easy CI
+// # Easy CI
 //
 // Because pqxtest uses pqx which "embeds" a postgres into you application, CI
 // is just "go test". No extra environment setup required. See this packages
 // .github/workflows for an example.
 //
-// No Mocks
+// # No Mocks
 //
 // Mocking database interactions is dangerous. It is easy to create a test that
 // gives false positives, or can cause developers precious time hunting down a
@@ -40,7 +40,7 @@
 // with a live database. Try pqxtest and ditch you mocking libraries and all
 // the for-tests-only interfaces and use concrete types instead!
 //
-// No global transaction
+// # No global transaction
 //
 // Some test libraries create a single transaction for a test and return a
 // wrapper-driver *sql.DB that runs all queries in a test in that transaction.
@@ -49,7 +49,7 @@
 // also means you can't use those nifty driver specific functions you love.
 // Pqxtest returns a real *sql.DB.
 //
-// Speed
+// # Speed
 //
 // Pqx is fast. It is designed to give you all the benefits of writing tests
 // against a real database without slowing you down. That means no waiting for
@@ -57,7 +57,7 @@
 // second or two to cache the standalone postgres binary and initialize the data
 // directory, but subsequent runs skip these steps, making them very fast!
 //
-// Logs
+// # Logs
 //
 // Databases are created using the test name, and all logs associated with the
 // test database are logged directly to the test t.Logf function. This provides
@@ -67,64 +67,64 @@
 // For example, the following failing tests will log the postgres logs for their
 // databases only:
 //
-//  func TestFailingInsert(t *testing.T) {
-//  	db := pqxtest.CreateDB(t, ``)
-//  	_, err := db.Exec(`INSERT INTO foo VALUES (1)`)
-//  	if err != nil {
-//  		t.Fatal(err)
-//  	}
-//  }
+//	func TestFailingInsert(t *testing.T) {
+//		db := pqxtest.CreateDB(t, ``)
+//		_, err := db.Exec(`INSERT INTO foo VALUES (1)`)
+//		if err != nil {
+//			t.Fatal(err)
+//		}
+//	}
 //
-//  func TestFailingSelect(t *testing.T) {
-//  	db := pqxtest.CreateDB(t, ``)
-//  	_, err := db.Exec(`SELECT * FROM bar`)
-//  	if err != nil {
-//  		t.Fatal(err)
-//  	}
-//  }
+//	func TestFailingSelect(t *testing.T) {
+//		db := pqxtest.CreateDB(t, ``)
+//		_, err := db.Exec(`SELECT * FROM bar`)
+//		if err != nil {
+//			t.Fatal(err)
+//		}
+//	}
 //
 // Running ("go test") will produce:
 //
-//  --- FAIL: TestFailingInsert (0.03s)
-//      example_test.go:54: [pqx]: psql 'host=localhost port=51718 dbname=testfailinginsert_37d0bb55e5c8cb86 sslmode=disable'
-//      logplex.go:123: ERROR:  relation "foo" does not exist at character 13
-//      logplex.go:123: STATEMENT:  INSERT INTO foo VALUES (1)
-//      example_test.go:57: pq: relation "foo" does not exist
-//  --- FAIL: TestFailingSelect (0.03s)
-//      example_test.go:62: [pqx]: psql 'host=localhost port=51718 dbname=testfailingselect_2649dda9b27d8c74 sslmode=disable'
-//      logplex.go:123: ERROR:  relation "bar" does not exist at character 15
-//      logplex.go:123: STATEMENT:  SELECT * FROM bar
-//      example_test.go:65: pq: relation "bar" does not exist
+//	--- FAIL: TestFailingInsert (0.03s)
+//	    example_test.go:54: [pqx]: psql 'host=localhost port=51718 dbname=testfailinginsert_37d0bb55e5c8cb86 sslmode=disable'
+//	    logplex.go:123: ERROR:  relation "foo" does not exist at character 13
+//	    logplex.go:123: STATEMENT:  INSERT INTO foo VALUES (1)
+//	    example_test.go:57: pq: relation "foo" does not exist
+//	--- FAIL: TestFailingSelect (0.03s)
+//	    example_test.go:62: [pqx]: psql 'host=localhost port=51718 dbname=testfailingselect_2649dda9b27d8c74 sslmode=disable'
+//	    logplex.go:123: ERROR:  relation "bar" does not exist at character 15
+//	    logplex.go:123: STATEMENT:  SELECT * FROM bar
+//	    example_test.go:65: pq: relation "bar" does not exist
 //
 // Tip: Try running these tests with "go test -v -pqxtest.d=2" to see more detailed logs in the
 // tests, or set it to 3 and see even more verbose logs.
 //
-// PSQL
+// # PSQL
 //
 // Test databases can be accessed using the psql command line tool before they
 // exist. Use the BlockForPSQL function to accomplish this.
 //
-// No Config
+// # No Config
 //
 // Pqx starts each postgres with reasonable defaults for the most common use
 // cases. The defaults can be overridden by setting environment variables and
 // using flags. See below.
 //
-// Environment Variables
+// # Environment Variables
 //
 // The following environment variables are recognized:
 //
-//  PQX_PG_VERSION: Specifies the version of postgres to use. The default is pqx.DefaultVersion.
+//	PQX_PG_VERSION: Specifies the version of postgres to use. The default is pqx.DefaultVersion.
 //
-// Flags
+// # Flags
 //
 // pqxtest recognizes the following flag:
 //
-//  -pqxtest.d=<level>: Sets the debug level for the Postgres instance. See Logs for more details.
+//	-pqxtest.d=<level>: Sets the debug level for the Postgres instance. See Logs for more details.
 //
 // Flags may be specified with go test like:
 //
-//  go test -v -pqxtest.d=2
+//	go test -v -pqxtest.d=2
 package pqxtest
 
 import (
@@ -146,6 +146,7 @@ import (
 
 	"blake.io/pqx"
 	"blake.io/pqx/internal/logplex"
+	"blake.io/pqx/pqxtest/supervise"
 )
 
 // Flags
@@ -159,6 +160,12 @@ var (
 	dmu  sync.Mutex
 	dsns = map[testing.TB][]string{}
 )
+
+// DSN returns the main dsn for the running postgres instance. It must only be
+// call after a call to Start.
+func DSN() string {
+	return sharedPG.DSN("postgres")
+}
 
 // TestMain is a convenience function for running tests with a live Postgres
 // instance. It starts the Postgres instance before calling m.Run, and then
@@ -181,6 +188,8 @@ func TestMain(m *testing.M) {
 // The Postgres instance is started in a temporary directory named after the
 // current working directory and reused across runs.
 func Start(timeout time.Duration, debugLevel int) {
+	supervise.Main()
+
 	sharedPG = &pqx.Postgres{
 		Version:    os.Getenv("PQX_PG_VERSION"),
 		Dir:        getSharedDir(),
@@ -197,6 +206,7 @@ func Start(timeout time.Duration, debugLevel int) {
 		}
 		log.Fatalf("error starting Postgres: %v", err)
 	}
+	supervise.This(sharedPG.Pid())
 }
 
 // Shutdown shuts down the shared Postgres instance.
@@ -204,7 +214,7 @@ func Shutdown() {
 	if sharedPG == nil {
 		return
 	}
-	if err := sharedPG.Shutdown(); err != nil {
+	if err := sharedPG.ShutdownAlone(); err != nil {
 		log.Printf("error shutting down Postgres: %v", err)
 	}
 }
@@ -253,11 +263,11 @@ func CreateDB(t testing.TB, schema string) *sql.DB {
 //
 // Example Usage:
 //
-//  func TestSomething(t *testing.T) {
-//  	db := pqxtest.CreateDB(t, "CREATE TABLE foo (id INT)")
-//	defer pqxtest.BlockForPSQL(t) // will run even in the face of t.Fatal/Fail.
-//  	// ... do something with db ...
-//  }
+//	 func TestSomething(t *testing.T) {
+//	 	db := pqxtest.CreateDB(t, "CREATE TABLE foo (id INT)")
+//		defer pqxtest.BlockForPSQL(t) // will run even in the face of t.Fatal/Fail.
+//	 	// ... do something with db ...
+//	 }
 func BlockForPSQL(t testing.TB) {
 	t.Helper()
 
