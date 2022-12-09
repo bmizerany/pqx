@@ -50,4 +50,14 @@ func This(pid int) {
 	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		// Exiting this function without this reference to sup means
+		// cmd is sent to the heap, where it will be eligible for GC,
+		// possibly too early, causing the stdin pipe to be closed
+		// early which will cause the supervisor to exit early, and
+		// kill postgres too early, leading test failures, and sad
+		// developers.
+		_ = sup.Wait()
+	}()
 }
