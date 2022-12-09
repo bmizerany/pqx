@@ -105,6 +105,22 @@ func TestOrphan(t *testing.T) {
 
 }
 
+func TestParallel(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		t.Run("r", func(t *testing.T) {
+			t.Parallel()
+			db := pqxtest.CreateDB(t, "")
+			_, err := db.Exec(`SELECT 1`)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	t.Run("wait", func(t *testing.T) {
+		t.Logf("waiting")
+	})
+}
+
 func scanString(t *testing.T, r io.Reader, format string) string {
 	t.Helper()
 	var s string
