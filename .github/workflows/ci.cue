@@ -33,7 +33,12 @@ jobs: {
 		}, {
 			name: "Go Test"
 			run: """
-				go test -v ./...
+				go test -count=10 -v ./...
+				"""
+		}, {
+			name: "Go Test (-race)"
+			run: """
+				go test -race -count=10 -v ./...
 				"""
 		}]
 	}
