@@ -137,16 +137,18 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 	"unicode"
 
 	"blake.io/pqx"
 	"blake.io/pqx/internal/logplex"
-	"blake.io/pqx/pqxtest/supervise"
 )
 
 // Flags
@@ -188,7 +190,7 @@ func TestMain(m *testing.M) {
 // The Postgres instance is started in a temporary directory named after the
 // current working directory and reused across runs.
 func Start(timeout time.Duration, debugLevel int) {
-	supervise.Main()
+	maybeBecomeSupervisor()
 
 	sharedPG = &pqx.Postgres{
 		Version:    os.Getenv("PQX_PG_VERSION"),
@@ -206,7 +208,8 @@ func Start(timeout time.Duration, debugLevel int) {
 		}
 		log.Fatalf("error starting Postgres: %v", err)
 	}
-	supervise.This(sharedPG.Pid())
+
+	shutThisDownAfterMyDeath(sharedPG.Pid())
 }
 
 // Shutdown shuts down the shared Postgres instance.
@@ -339,4 +342,55 @@ func (b *lockedBuffer) WriteTo(w io.Writer) (int64, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.b.WriteTo(w)
+}
+
+func maybeBecomeSupervisor() {
+	pid, _ := strconv.Atoi(os.Getenv("_PQX_SUP_PID"))
+	if pid == 0 {
+		return
+	}
+	log.SetFlags(0)
+	awaitParentDeath()
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		log.Fatalf("find process: %v", err)
+	}
+	if err := p.Signal(syscall.Signal(syscall.SIGQUIT)); err != nil {
+		log.Fatalf("error signaling process: %v", err)
+	}
+	os.Exit(0)
+}
+
+func awaitParentDeath() {
+	_, _ = os.Stdin.Read(make([]byte, 1))
+}
+
+func shutThisDownAfterMyDeath(pid int) {
+	exe, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+	sup := exec.Command(exe)
+	sup.Env = append(os.Environ(), "_PQX_SUP_PID="+strconv.Itoa(pid))
+	sup.Stdout = os.Stdout
+	sup.Stderr = os.Stderr
+
+	// set a pipe we never write to as to block the supervisor until we die
+	_, err = sup.StdinPipe()
+	if err != nil {
+		panic(err)
+	}
+	err = sup.Start()
+	if err != nil {
+		panic(err)
+	}
+
+	go func() {
+		// Exiting this function without this reference to sup means
+		// sup can become eliglble for GC after This exists. This means
+		// the stdin pipe will also be collected, utlimately causing
+		// sup to think it's parent has died, and it will shutdown
+		// postgres and exit.
+		_ = sup.Wait()
+	}()
 }
