@@ -71,6 +71,19 @@ func TestSubTestNames(t *testing.T) {
 	}
 }
 
+func TestLongNames(t *testing.T) {
+	prefix := strings.Repeat("a", 100)
+
+	cases := []string{
+		prefix + "a",
+		prefix + "b",
+	}
+
+	for _, name := range cases {
+		t.Run(name, func(t *testing.T) { pqxtest.CreateDB(t, "") })
+	}
+}
+
 func TestOrphan(t *testing.T) {
 	exe, err := os.Executable()
 	if err != nil {
