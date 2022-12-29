@@ -169,6 +169,14 @@ func DSN() string {
 	return sharedPG.DSN("postgres")
 }
 
+// DSNForTest returns the dsn for the test database. It must only be called
+// after a call to CreateDB.
+func DSNForTest(t testing.TB) string {
+	dmu.Lock()
+	defer dmu.Unlock()
+	return dsns[t][0]
+}
+
 // TestMain is a convenience function for running tests with a live Postgres
 // instance. It starts the Postgres instance before calling m.Run, and then
 // calls Shutdown after.
