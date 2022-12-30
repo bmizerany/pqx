@@ -169,8 +169,8 @@ func DSN() string {
 	return sharedPG.DSN("postgres")
 }
 
-// DSNForTest returns the dsn for the test database. It must only be called
-// after a call to CreateDB.
+// DSNForTest returns the dsn for the first test database created using t. It
+// must only be called after a call to CreateDB.
 func DSNForTest(t testing.TB) string {
 	dmu.Lock()
 	defer dmu.Unlock()
