@@ -31,28 +31,29 @@ func BinaryURL(version string) string {
 	).Replace(fetchURLTempl)
 }
 
+func pgDir(version string) string {
+	cacheDir := envCacheDir
+	if cacheDir == "" {
+		cacheDir = os.Getenv("HOME")
+		if cacheDir == "" {
+			cacheDir, _ = os.UserHomeDir()
+		}
+		if cacheDir == "" {
+			panic("no HOME; try setting PQX_BIN_DIR instead")
+		}
+	}
+	return filepath.Join(cacheDir, ".cache/pqx", version)
+}
+
 func Binary(ctx context.Context, version string) (binDir string, err error) {
 	defer errorfmt.Handlef("fetchBinary: %w", &err)
 
-	cacheDir := envCacheDir
-	var pgDir string
-	if cacheDir == "" {
-		var err error
-		cacheDir, err = os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		pgDir, err = filepath.Abs(filepath.Join(cacheDir, ".cache/pqx", version))
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if err := os.MkdirAll(pgDir, 0755); err != nil {
+	dir := pgDir(version)
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
 
-	binDir = path.Join(pgDir, "bin")
+	binDir = path.Join(dir, "bin")
 	_, err = os.Stat(binDir)
 	if err == nil {
 		// already cached
@@ -73,7 +74,7 @@ func Binary(ctx context.Context, version string) (binDir string, err error) {
 	}
 	defer res.Body.Close()
 
-	if err := extractJar(ctx, pgDir, res.Body); err != nil {
+	if err := extractJar(ctx, dir, res.Body); err != nil {
 		return "", err
 	}
 
