@@ -395,8 +395,8 @@ func shutThisDownAfterMyDeath(pid int) {
 
 	go func() {
 		// Exiting this function without this reference to sup means
-		// sup can become eliglble for GC after This exists. This means
-		// the stdin pipe will also be collected, utlimately causing
+		// sup can become eligible for GC after this exists. This means
+		// the stdin pipe will also be collected, ultimately causing
 		// sup to think it's parent has died, and it will shutdown
 		// postgres and exit.
 		_ = sup.Wait()
