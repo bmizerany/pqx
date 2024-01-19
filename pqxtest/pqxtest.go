@@ -244,6 +244,9 @@ func CreateDB(t testing.TB, schema string) *sql.DB {
 	})
 
 	name := cleanName(t.Name())
+	if len(name) > 54 {
+		name = name[0:53]
+	}
 	name = fmt.Sprintf("%s_%s", name, randomString())
 	db, dsn, cleanup, err := sharedPG.CreateDB(context.Background(), t.Logf, name, schema)
 	if err != nil {
